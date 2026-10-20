@@ -558,7 +558,7 @@ async function finalizePeriod() {
   }
 }
 
-function exportReportsPDF() {
+const exportReportsPDF = async () => {
   if (!selectedPeriod || periodReports.length === 0) {
     notify('No reports are available to export.');
     return;
@@ -614,6 +614,26 @@ function exportReportsPDF() {
     console.error('PDF export failed:', cause);
     notify('Could not export the PDF reports.');
   }
+
+
+    // Issue secure parent download links for these reports.
+    const reportIds = periodReports.map((report) => report.id);
+
+    if (reportIds.length > 0) {
+      const { data, error } = await supabase.functions.invoke(
+        'issue-midterm-links',
+        {
+          body: { report_ids: reportIds },
+        },
+      );
+
+      if (error) {
+        console.error('Parent link generation failed:', error);
+      } else {
+        console.info('Parent link generation result:', data);
+      }
+    }
+
 }
 
 function exportMarksExcel() {
