@@ -5,6 +5,8 @@ import {
   CalendarDays,
   CheckCircle2,
   Clock3,
+  Download,
+  FileSpreadsheet,
   FileText,
   LockKeyhole,
   Plus,
@@ -12,6 +14,9 @@ import {
   UnlockKeyhole,
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
+import * as XLSX from 'xlsx';
 
 type Role =
   | 'teacher'
@@ -62,6 +67,7 @@ type Mark = {
 type Report = {
   id: string;
   period_id: string;
+  period: string; 
   student_id: string;
   student_name: string;
   class_name: string;
@@ -441,6 +447,7 @@ export default function MidTermEngine({
         return [
           {
             period_id: selectedPeriod.id,
+            period: selectedPeriod.name,
             student_id: student.id,
             student_name: student.full_name,
             class_name: student.class_name,
@@ -478,43 +485,214 @@ export default function MidTermEngine({
     }
   }
 
-  async function finalizePeriod() {
-    if (!supabase || !isDean(role) || busy) return;
+  
+async function finalizePeriod() {
+  if (!supabase || !isDean(role) || busy) return;
 
-    if (!selectedPeriod || isFinalized) return;
+  if (!selectedPeriod || isFinalized) {
+    notify('Select an open mid-term first.');
+    return;
+  }
 
-    const confirmed = window.confirm(
-      `Finalize "${selectedPeriod.name}"? This should permanently lock marks for this mid-term. Check the reports first.`,
+  if (!classStudents.length || !classSubjects.length) {
+    notify('This class has no students or enabled subjects.');
+    return;
+  }
+
+  // Ensure every student has a report for this exact mid-term.
+  const missingReports = classStudents.filter((student) => {
+    const report = periodReports.find(
+      (item) =>
+        item.student_id === student.id &&
+        item.period_id === selectedPeriod.id,
     );
 
-    if (!confirmed) return;
+    return !report;
+  });
 
-    setBusy(true);
-
-    try {
-      const { error: finalizeError } = await supabase
-        .from('midterm_periods')
-        .update({
-          status: 'finalized',
-          finalized_at: new Date().toISOString(),
-          finalized_by: userId ?? null,
-        })
-        .eq('id', selectedPeriod.id)
-        .neq('status', 'finalized');
-
-      if (finalizeError) throw finalizeError;
-
-      await refresh();
-      notify(
-        'Finalization requested. The database must enforce the lock for this to be secure.',
-      );
-    } catch (cause) {
-      console.error('Could not finalize mid-term:', cause);
-      notify('Could not finalize this mid-term.');
-    } finally {
-      setBusy(false);
-    }
+  if (missingReports.length > 0) {
+    notify(
+      `${missingReports.length} student(s) still need reports. Generate and check all reports before locking.`,
+    );
+    return;
   }
+
+  const confirmed = window.confirm(
+    `Finalize "${selectedPeriod.name}"? This permanently locks marks for this mid-term. ${classStudents.length} student reports have been checked for existence. Continue?`,
+  );
+
+  if (!confirmed) return;
+
+  setBusy(true);
+
+  try {
+    const { data, error: finalizeError } = await supabase
+      .from('midterm_periods')
+      .update({
+        status: 'finalized',
+        finalized_at: new Date().toISOString(),
+        finalized_by: userId ?? null,
+      })
+      .eq('id', selectedPeriod.id)
+      .eq('status', 'open')
+      .select('id');
+
+    if (finalizeError) throw finalizeError;
+
+    if (!data?.length) {
+      throw new Error(
+        'The period was not locked. It may already be finalized or is no longer open.',
+      );
+    }
+
+    await refresh();
+
+    notify(
+      'Mid-term locked. All students in this class have reports. Parent report links and notifications are the next step.',
+    );
+  } catch (cause) {
+    console.error('Could not finalize mid-term:', cause);
+    notify('Could not finalize this mid-term. Check the database and permissions.');
+  } finally {
+    setBusy(false);
+  }
+}
+
+function exportReportsPDF() {
+  if (!selectedPeriod || periodReports.length === 0) {
+    notify('No reports are available to export.');
+    return;
+  }
+
+  try {
+    periodReports.forEach((report) => {
+      const pdf = new jsPDF();
+      const rows = report.report_data?.rows ?? [];
+
+      pdf.setFontSize(18);
+      pdf.text('G.S. Gacuba 2A', 105, 18, { align: 'center' });
+
+      pdf.setFontSize(14);
+      pdf.text('Mid-term report card', 105, 27, { align: 'center' });
+
+      pdf.setFontSize(10);
+      pdf.text(`Student: ${report.student_name}`, 14, 42);
+      pdf.text(`Class: ${report.class_name}`, 14, 49);
+      pdf.text(`Assessment: ${selectedPeriod.name}`, 14, 56);
+      pdf.text(`Official date: ${selectedPeriod.official_date}`, 14, 63);
+
+      autoTable(pdf, {
+        startY: 72,
+        head: [['Subject', 'Mark / 100', 'Grade']],
+        body: rows.map((row) => [
+          row.subject,
+          Number(row.mark).toFixed(1),
+          row.grade || gradeFor(Number(row.mark)),
+        ]),
+        theme: 'grid',
+        headStyles: { fillColor: [58, 40, 24] },
+      });
+
+      const finalY =
+        (pdf as jsPDF & { lastAutoTable?: { finalY: number } })
+          .lastAutoTable?.finalY ?? 80;
+
+      pdf.setFontSize(12);
+      pdf.text(
+        `Average: ${Number(report.average).toFixed(2)}%`,
+        14,
+        finalY + 12,
+      );
+
+      pdf.save(
+        `${report.student_name.replace(/[^a-z0-9-_]/gi, '_')}_${selectedPeriod.name.replace(/[^a-z0-9-_]/gi, '_')}.pdf`,
+      );
+    });
+
+    notify(`${periodReports.length} student PDF report(s) exported.`);
+  } catch (cause) {
+    console.error('PDF export failed:', cause);
+    notify('Could not export the PDF reports.');
+  }
+}
+
+function exportMarksExcel() {
+  if (!selectedPeriod) {
+    notify('Select an assessment period first.');
+    return;
+  }
+
+  try {
+    const subjectColumns = subjects.filter((subject) => subject.is_enabled);
+
+    const register = students.map((student) => {
+      const studentMarks = periodMarks.filter(
+        (mark) => mark.student_id === student.id,
+      );
+
+      const row: Record<string, string | number> = {
+        'Student name': student.full_name,
+        Class: student.class_name,
+        Stream: student.stream ?? '',
+      };
+
+      subjectColumns.forEach((subject) => {
+        const mark = studentMarks.find(
+          (item) => item.subject_id === subject.id,
+        );
+
+        row[`${subject.class_name} - ${subject.subject_name}`] =
+          mark ? Number(mark.mark) : '';
+      });
+
+      const numericMarks = studentMarks.map((item) => Number(item.mark));
+
+      row['Recorded marks'] = numericMarks.length;
+      row['Average of recorded marks'] = numericMarks.length
+        ? Number(
+            (
+              numericMarks.reduce((sum, mark) => sum + mark, 0) /
+              numericMarks.length
+            ).toFixed(2),
+          )
+        : '';
+
+      return row;
+    });
+
+    const reportSummary = periodReports.map((report) => ({
+      Student: report.student_name,
+      Class: report.class_name,
+      Average: Number(report.average),
+      'Assessment period': selectedPeriod.name,
+      'Report generated': new Date(report.generated_at).toLocaleString(),
+    }));
+
+    const workbook = XLSX.utils.book_new();
+
+    XLSX.utils.book_append_sheet(
+      workbook,
+      XLSX.utils.json_to_sheet(register),
+      'Marks register',
+    );
+
+    XLSX.utils.book_append_sheet(
+      workbook,
+      XLSX.utils.json_to_sheet(reportSummary),
+      'Report summary',
+    );
+
+    XLSX.writeFile(
+      workbook,
+      `Midterm_${selectedPeriod.name.replace(/[^a-z0-9-_]/gi, '_')}.xlsx`,
+    );
+
+    notify('Excel register exported successfully.');
+  } catch (cause) {
+    console.error('Excel export failed:', cause);
+    notify('Could not export the Excel register.');
+  }
+}
 
   const markFor = (studentId: string, subjectId: string) =>
     periodMarks.find(
@@ -708,7 +886,25 @@ export default function MidTermEngine({
                 <FileText size={15} />
                 Generate reports
               </button>
+              
             )}
+            <button
+              onClick={exportReportsPDF}
+              disabled={busy || periodReports.length === 0}
+              className="inline-flex items-center gap-2 rounded-lg border border-stone-300 bg-white px-3 py-2 text-sm font-semibold disabled:opacity-50"
+            >
+              <Download size={15} />
+              Export PDFs
+            </button>
+
+            <button
+              onClick={exportMarksExcel}
+              disabled={busy || !selectedPeriod}
+              className="inline-flex items-center gap-2 rounded-lg border border-stone-300 bg-white px-3 py-2 text-sm font-semibold disabled:opacity-50"
+            >
+              <FileSpreadsheet size={15} />
+              Export Excel
+            </button>
           </div>
 
           <div className="mt-4">
