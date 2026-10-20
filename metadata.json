@@ -1,0 +1,8 @@
+{
+  "name": "G.S Gacuba 2A Admin Portal",
+  "description": "School administration dashboard for managing parent notifications, student contact records, landing page gallery and news content, and visitor inquiries.",
+  "permissions": [],
+  "capabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
