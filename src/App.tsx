@@ -37,10 +37,13 @@ import SettingsModal from '@/components/modals/SettingsModal';
 import HelpModal from '@/components/modals/HelpModal';
 import LoginScreen from '@/components/LoginScreen';
 import TeacherOverview from '@/pages/TeacherOverview';
+import ReportNotFound from '@/pages/ReportNotFound';
 
 const MidTermEngine = React.lazy(() => import('@/pages/MidTermEngine'));
 
-function mapStudentToParentContact(row: Record<string, unknown>): Contact {
+function mapStudentToParentContact(
+  row: Record<string, unknown>
+): Contact {
   return {
     id: String(row.id),
     parent_name: String(row.parent_name ?? ''),
@@ -51,6 +54,7 @@ function mapStudentToParentContact(row: Record<string, unknown>): Contact {
     preferred_channel: 'SMS',
     status: 'Active',
     created_at: String(row.created_at ?? ''),
+    fee_amount: Number(row.fee_amount ?? 0),
   };
 }
 
@@ -71,6 +75,7 @@ function parseSchoolRole(value: unknown): SchoolRole {
       : role === 'teacher' ? 'teacher'
         : role === 'it' ? 'it' : 'unknown';
 }
+
 
 function AccessNotice({
   roleName,
@@ -148,7 +153,7 @@ function App() {
       setContacts([]);
       const [studentsResult, campaignsResult, galleryResult, newsResult, inquiriesResult, settingsResult] = await Promise.all([
         deanRole || headteacherRole
-          ? supabase.from('school_students').select('id, parent_name, full_name, class_name, phone, email, created_at').order('created_at', { ascending: false }).limit(5000)
+          ? supabase.from('school_students').select('id, parent_name, full_name, class_name, phone, email, fee_amount, created_at').order('created_at', { ascending: false }).limit(5000)
           : Promise.resolve({ data: [] }),
         deanRole || headteacherRole ? supabase.from('notification_campaigns').select('*').order('created_at', { ascending: false }).limit(50) : Promise.resolve({ data: [] }),
         deanRole ? supabase.from('gallery_items').select('*').order('updated_at', { ascending: false }).limit(50) : Promise.resolve({ data: [] }),
@@ -177,7 +182,7 @@ function App() {
       .on('postgres_changes', { event: '*', schema: 'public', table: 'school_students' }, async () => {
         const { data, error } = await client
           .from('school_students')
-          .select('id, parent_name, full_name, class_name, phone, email, created_at')
+          .select('id, parent_name, full_name, class_name, phone, email, fee_amount, created_at')
           .order('created_at', { ascending: false })
           .limit(5000);
         if (error) {
@@ -196,7 +201,7 @@ function App() {
     async function refreshRegistryContacts() {
       const { data, error } = await supabase!
         .from('school_students')
-        .select('id, parent_name, full_name, class_name, phone, email, created_at')
+        .select('id, parent_name, full_name, class_name, phone, email, fee_amount, created_at')
         .order('created_at', { ascending: false })
         .limit(5000);
       if (cancelled) return;
@@ -549,6 +554,10 @@ function App() {
     }
   }, []);
 
+  if (location.pathname === '/report-not-found') {
+  return <ReportNotFound />;
+}
+
   if (!authed) return <LoginScreen onLogin={handleLogin} />;
 
   if (loading) return <LoadingScreen />;
@@ -754,9 +763,8 @@ function App() {
         </div>
       )}
 
-      {/* 8. Quiet Institutional Footer (Screenshot 1) */}
       <footer className="system-footer">
-        All Rights Reserved by G.S Gacuba 2A · Ministry of Education (MINEDUC), Republic of Rwanda.
+        All Rights Reserved by G.S Gacuba 2A
       </footer>
     </div>
   );

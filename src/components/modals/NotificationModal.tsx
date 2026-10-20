@@ -25,23 +25,60 @@ type Category = 'FEES' | 'GENERAL' | 'REPORT';
 type RecipientMode = 'ALL' | 'SELECT';
 type DispatchAction = 'SEND_NOW' | 'SAVE_DRAFT' | 'SCHEDULE';
 
-const templates: Record<Category, { title: string; message: string; tags: string[] }> = {
+const REQUIRED_SCHOOL_FEES_RWF = 24000;
+
+function getRemainingBalanceRwf(contact: Contact): number {
+  const paid = Number(contact.fee_amount ?? 0);
+
+  if (!Number.isFinite(paid) || paid < 0) {
+    return REQUIRED_SCHOOL_FEES_RWF;
+  }
+
+  return Math.max(0, REQUIRED_SCHOOL_FEES_RWF - paid);
+}
+
+function personalizeMessage(
+  template: string,
+  contact: Contact
+): string {
+  const values: Record<string, string> = {
+    FULLNAME: contact.student_name?.trim() || 'Student name not recorded',
+    FEES: getRemainingBalanceRwf(contact).toLocaleString('en-RW'),
+    PARENTNAME: contact.parent_name?.trim() || 'Parent / Guardian',
+    CLASS: contact.class_name?.trim() || 'Class not recorded',
+  };
+
+  return template.replace(
+    /\{(FULLNAME|FEES|PARENTNAME|CLASS)\}/g,
+    (_match, token: string) => values[token]
+  );
+}
+
+
+const templates: Record<
+  Category,
+  { title: string; message: string; tags: string[] }
+> = {
   FEES: {
     title: 'School Fees Remaining Balance Reminder',
-    message: 'Dear Parent, remaining school fees balance for {FULLNAME} is {FEES} RWF. Please settle promptly via MoMo/Bank.',
-    tags: ['{FULLNAME}', '{FEES}'],
+    message:
+      'Dear {PARENTNAME}, the remaining school fees balance for {FULLNAME} in {CLASS} is {FEES} RWF. Please settle the balance promptly.',
+    tags: ['{PARENTNAME}', '{FULLNAME}', '{FEES}', '{CLASS}'],
   },
   GENERAL: {
     title: 'Important School Announcement',
-    message: 'Dear Parents, please be informed that G.S Gacuba 2A will hold a general PTA meeting this Friday at 2 PM.',
-    tags: ['{FULLNAME}'],
+    message:
+      'Dear {PARENTNAME}, please note this announcement concerning {FULLNAME} of {CLASS}: ',
+    tags: ['{PARENTNAME}', '{FULLNAME}', '{CLASS}'],
   },
   REPORT: {
-    title: 'Academic Performance Report Download Link',
-    message: 'Dear Parent, academic report for {FULLNAME} is now ready. Download directly here: {REPORTLINK}',
-    tags: ['{FULLNAME}', '{REPORTLINK}'],
+    title: 'Academic Performance Report',
+    message:
+      'Dear {PARENTNAME}, the academic report for {FULLNAME} of {CLASS} is not available for online download yet. Please contact the school administration.',
+    tags: ['{PARENTNAME}', '{FULLNAME}', '{CLASS}'],
   },
 };
+
 
 export default function NotificationModal({
   onClose,
@@ -282,7 +319,7 @@ export default function NotificationModal({
               Send Parent Notice
             </h2>
             <p className="text-[11px] text-[#fed7aa] mt-0.5">
-              SMS via Africa's Talking & Free School Email
+              SMS and or Email
             </p>
           </div>
           <button
@@ -305,7 +342,7 @@ export default function NotificationModal({
                 <strong className="block font-semibold">Message sent successfully!</strong>
                 {sendResult.smsMessage && (
                   <p className="text-[11px] mt-0.5">
-                    Africa's Talking SMS: {sendResult.smsMessage} {sendResult.smsCost && `(${sendResult.smsCost})`}
+                    SMS: {sendResult.smsMessage} {sendResult.smsCost && `(${sendResult.smsCost})`}
                   </p>
                 )}
                 {sendResult.emailMessage && (
@@ -371,10 +408,10 @@ export default function NotificationModal({
                 <div>
                   <div className="flex items-center gap-1.5">
                     <Smartphone size={14} className={useSMS ? 'text-[#ea580c]' : 'text-slate-400'} />
-                    <strong className="text-xs font-semibold">Africa's Talking SMS</strong>
+                    <strong className="text-xs font-semibold">SMS</strong>
                   </div>
                   <p className="text-[10px] text-slate-500 mt-0.5">
-                    Direct SMS to Rwandan parent numbers
+                    Direct SMS to parent numbers
                   </p>
                 </div>
               </label>
@@ -446,7 +483,7 @@ export default function NotificationModal({
                 )}
               </div>
               <span className="text-[10px] text-slate-400 font-mono">
-                Africa's Talking Bulk Spec
+                 Bulk Spec
               </span>
             </div>
           </div>

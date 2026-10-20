@@ -5,6 +5,7 @@ export type Contact = {
   parent_name: string;
   student_name: string;
   class_name: string;
+  fee_amount?: number;
   phone: string;
   email: string;
   preferred_channel: string;

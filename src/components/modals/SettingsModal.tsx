@@ -1,8 +1,7 @@
-import React, { useState, useEffect } from 'react';
-import { Check, X, Smartphone, Mail } from 'lucide-react';
+
+import { useState, useEffect } from 'react';
+import { Check, X, Smartphone, Mail, ShieldCheck } from 'lucide-react';
 import { SCHOOL_NAME } from '@/lib/constants';
-import { getAfricasTalkingConfig } from '@/services/africasTalkingService';
-import { getEmailConfig } from '@/services/emailService';
 
 export default function SettingsModal({
   onClose,
@@ -15,12 +14,13 @@ export default function SettingsModal({
   notify: (message: string) => void;
   adminName?: string | null;
   defaultChannel?: string | null;
-  onSave: (settings: { admin_name: string; default_notification_channel: string }) => void;
+  onSave: (settings: {
+    admin_name: string;
+    default_notification_channel: string;
+  }) => void;
 }) {
   const [name, setName] = useState(adminName ?? '');
   const [channel, setChannel] = useState(defaultChannel ?? 'SMS');
-  const atConfig = getAfricasTalkingConfig();
-  const emailConfig = getEmailConfig();
 
   useEffect(() => {
     setName(adminName ?? '');
@@ -38,14 +38,21 @@ export default function SettingsModal({
       className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm"
     >
       <div className="w-full max-w-lg bg-white rounded-lg shadow-xl border border-slate-300 overflow-hidden">
+        {/* Header */}
         <div className="flex items-center justify-between px-5 py-3.5 bg-[#3b2314] text-white border-b-2 border-[#ea580c]">
           <div>
-            <h2 className="text-sm font-bold uppercase tracking-wider">School Profile & Settings</h2>
-            <p className="text-[11px] text-[#fed7aa] mt-0.5">School Administration Portal</p>
+            <h2 className="text-sm font-bold uppercase tracking-wider">
+              School Profile &amp; Settings
+            </h2>
+            <p className="text-[11px] text-[#fed7aa] mt-0.5">
+              School Administration Portal
+            </p>
           </div>
+
           <button
             type="button"
             onClick={onClose}
+            aria-label="Close settings"
             className="text-white/80 hover:text-white p-1 rounded hover:bg-white/10"
           >
             <X size={18} />
@@ -53,78 +60,133 @@ export default function SettingsModal({
         </div>
 
         <div className="p-5 space-y-4 text-xs">
+          {/* Institution */}
           <div>
-            <label className="block text-[11px] font-bold text-slate-700 uppercase mb-1">Institution</label>
-            <input value={SCHOOL_NAME} disabled className="form-input w-full bg-slate-100 text-slate-600 font-semibold" />
+            <label className="block text-[11px] font-bold text-slate-700 uppercase mb-1">
+              Institution
+            </label>
+            <input
+              value={SCHOOL_NAME}
+              disabled
+              className="form-input w-full bg-slate-100 text-slate-600 font-semibold"
+            />
           </div>
 
+          {/* Administrator */}
           <div>
-            <label className="block text-[11px] font-bold text-slate-700 uppercase mb-1">Administrator Full Name</label>
+            <label className="block text-[11px] font-bold text-slate-700 uppercase mb-1">
+              Administrator Full Name
+            </label>
             <input
               value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder="e.g. Mitali Jean Bosco"
+              onChange={(event) => setName(event.target.value)}
+              placeholder="Enter administrator's full name"
               className="form-input w-full"
             />
           </div>
 
+          {/* Default notification channel */}
           <div>
-            <label className="block text-[11px] font-bold text-slate-700 uppercase mb-1">Default Notification Channel</label>
+            <label className="block text-[11px] font-bold text-slate-700 uppercase mb-1">
+              Default Notification Channel
+            </label>
             <select
               value={channel}
-              onChange={(e) => setChannel(e.target.value)}
+              onChange={(event) => setChannel(event.target.value)}
               className="form-input w-full bg-white font-medium"
             >
-              <option value="SMS">SMS (Africa's Talking)</option>
-              <option value="Email">Email (Free School Email)</option>
-              <option value="Both">Both SMS and Email</option>
+              <option value="SMS">SMS</option>
+              <option value="Email">Email</option>
+              <option value="Both">SMS and Email</option>
             </select>
+            <p className="text-[10px] text-slate-400 mt-1">
+              This sets the preferred channel for notifications where applicable.
+            </p>
           </div>
 
-          {/* Integrated Messaging Services Status */}
-          <div className="pt-2 border-t border-slate-200 space-y-2">
-            <span className="text-[11px] font-bold text-slate-700 uppercase block">Active Messaging Services</span>
-            <div className="grid grid-cols-2 gap-2">
-              <div className="p-2.5 rounded border border-slate-200 bg-slate-50 flex items-start gap-2">
-                <Smartphone size={15} className="text-[#ea580c] mt-0.5 shrink-0" />
-                <div>
-                  <strong className="block text-[11px] text-slate-800">Africa's Talking SMS</strong>
-                  <span className="text-[10px] text-slate-500">
-                    Mode: <span className="font-semibold uppercase text-[#ea580c]">{atConfig.environment}</span>
+          {/* Managed messaging services */}
+          <div className="pt-3 border-t border-slate-200 space-y-3">
+            <div>
+              <span className="text-[11px] font-bold text-slate-700 uppercase block">
+                Messaging Services
+              </span>
+              <p className="text-[10px] text-slate-500 mt-1">
+                These services are managed centrally by IT. Their configuration
+                cannot be changed from this workspace.
+              </p>
+            </div>
+
+            <div className="space-y-2">
+              <div className="p-3 rounded border border-slate-200 bg-slate-50 flex items-start gap-2.5">
+                <Smartphone
+                  size={16}
+                  className="text-[#ea580c] mt-0.5 shrink-0"
+                />
+                <div className="flex-1 min-w-0">
+                  <strong className="block text-[11px] text-slate-800">
+                    Africa&apos;s Talking SMS
+                  </strong>
+                  <span className="text-[10px] text-slate-500 block mt-0.5">
+                    Connected through the secure messaging backend
+                  </span>
+                  <span className="inline-flex items-center gap-1 mt-1.5 text-[10px] font-semibold text-slate-600">
+                    <ShieldCheck size={12} />
+                    IT-managed service
                   </span>
                 </div>
               </div>
 
-              <div className="p-2.5 rounded border border-slate-200 bg-slate-50 flex items-start gap-2">
-                <Mail size={15} className="text-[#0284c7] mt-0.5 shrink-0" />
-                <div>
-                  <strong className="block text-[11px] text-slate-800">Free School Email</strong>
-                  <span className="text-[10px] text-slate-500">
-                    Service: <span className="font-semibold uppercase text-[#0284c7]">{emailConfig.provider}</span>
+              <div className="p-3 rounded border border-slate-200 bg-slate-50 flex items-start gap-2.5">
+                <Mail
+                  size={16}
+                  className="text-[#0284c7] mt-0.5 shrink-0"
+                />
+                <div className="flex-1 min-w-0">
+                  <strong className="block text-[11px] text-slate-800">
+                    School Email
+                  </strong>
+                  <span className="text-[10px] text-slate-500 block mt-0.5">
+                    Email provider and credentials are managed centrally
+                  </span>
+                  <span className="inline-flex items-center gap-1 mt-1.5 text-[10px] font-semibold text-slate-600">
+                    <ShieldCheck size={12} />
+                    IT-managed service
                   </span>
                 </div>
               </div>
             </div>
+
             <p className="text-[10px] text-slate-400">
-              For help with phone numbers, test messages, or reminders, contact IT.
+              For delivery issues, phone number problems, or messaging service
+              changes, contact the school IT administrator.
             </p>
           </div>
         </div>
 
+        {/* Footer */}
         <div className="flex items-center justify-end gap-2 px-5 py-3.5 bg-slate-50 border-t border-slate-200">
-          <button type="button" onClick={onClose} className="btn-enterprise-cancel">
+          <button
+            type="button"
+            onClick={onClose}
+            className="btn-enterprise-cancel"
+          >
             Cancel
           </button>
+
           <button
             type="button"
             onClick={() => {
-              onSave({ admin_name: name || 'Administrator', default_notification_channel: channel });
+              onSave({
+                admin_name: name.trim() || 'Administrator',
+                default_notification_channel: channel,
+              });
               onClose();
               notify('Settings saved successfully.');
             }}
             className="btn-enterprise-save flex items-center gap-1.5"
           >
-            <Check size={14} /> Save changes
+            <Check size={14} />
+            Save changes
           </button>
         </div>
       </div>

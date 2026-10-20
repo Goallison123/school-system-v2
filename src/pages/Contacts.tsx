@@ -149,7 +149,6 @@ export default function Contacts({
 
       <div className="flex items-center justify-between text-xs text-slate-500 pt-2 border-t border-slate-100">
         <span>Verified Contacts: <strong className="font-mono font-bold text-slate-800">{filtered.length}</strong></span>
-        <span className="text-[11px]">Synced automatically with the School Student Registry</span>
       </div>
     </div>
   );
