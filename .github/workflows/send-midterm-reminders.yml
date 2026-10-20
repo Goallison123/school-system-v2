@@ -1,0 +1,34 @@
+
+name: Send mid-term reminders
+
+on:
+  schedule:
+    # 00:05 UTC = 02:05 in Rwanda (UTC+2)
+    - cron: "5 0 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  send-reminders:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Call mid-term reminder function
+        env:
+          FUNCTION_URL: ${{ secrets.SUPABASE_FUNCTION_URL }}
+          CRON_SECRET: ${{ secrets.MIDTERM_REMINDER_CRON_SECRET }}
+        run: |
+          set -euo pipefail
+
+          if [ -z "$FUNCTION_URL" ] || [ -z "$CRON_SECRET" ]; then
+            echo "Required GitHub Actions secrets are missing."
+            exit 1
+          fi
+
+          curl --fail-with-body --silent --show-error \
+            --request POST \
+            --url "$FUNCTION_URL" \
+            --header "x-cron-secret: $CRON_SECRET" \
+            --header "Content-Type: application/json" \
+            --data '{}'

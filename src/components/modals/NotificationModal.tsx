@@ -1,3 +1,4 @@
+
 import { useEffect, useMemo, useRef, useState, type ChangeEvent } from 'react';
 import {
   Check,
@@ -21,7 +22,7 @@ import {
 import { sendBulkEmail } from '@/services/emailService';
 import { addDispatchLog } from '@/services/automationService';
 
-type Category = 'FEES' | 'GENERAL' | 'REPORT';
+type Category = 'FEES' | 'ANNOUNCEMENT' | 'REPORT';
 type RecipientMode = 'ALL' | 'SELECT';
 type DispatchAction = 'SEND_NOW' | 'SAVE_DRAFT' | 'SCHEDULE';
 
@@ -37,10 +38,7 @@ function getRemainingBalanceRwf(contact: Contact): number {
   return Math.max(0, REQUIRED_SCHOOL_FEES_RWF - paid);
 }
 
-function personalizeMessage(
-  template: string,
-  contact: Contact
-): string {
+function personalizeMessage(template: string, contact: Contact): string {
   const values: Record<string, string> = {
     FULLNAME: contact.student_name?.trim() || 'Student name not recorded',
     FEES: getRemainingBalanceRwf(contact).toLocaleString('en-RW'),
@@ -54,7 +52,6 @@ function personalizeMessage(
   );
 }
 
-
 const templates: Record<
   Category,
   { title: string; message: string; tags: string[] }
@@ -62,10 +59,10 @@ const templates: Record<
   FEES: {
     title: 'School Fees Remaining Balance Reminder',
     message:
-      'Dear {PARENTNAME}, the remaining school fees balance for {FULLNAME} in {CLASS} is {FEES} RWF. Please settle the balance promptly.',
+      'Dear {PARENTNAME}, the remaining school fees balance for {FULLNAME} in {CLASS} is {FEES} RWF. Please contact the school administration if you have already paid.',
     tags: ['{PARENTNAME}', '{FULLNAME}', '{FEES}', '{CLASS}'],
   },
-  GENERAL: {
+  ANNOUNCEMENT: {
     title: 'Important School Announcement',
     message:
       'Dear {PARENTNAME}, please note this announcement concerning {FULLNAME} of {CLASS}: ',
@@ -79,7 +76,6 @@ const templates: Record<
   },
 };
 
-
 export default function NotificationModal({
   onClose,
   onSave,
@@ -87,7 +83,10 @@ export default function NotificationModal({
   allowReports = true,
 }: {
   onClose: () => void;
-  onSave: (campaign: Omit<Campaign, 'id' | 'created_at'>, dispatch: { fingerprint: string; recipientIds: string[] }) => void;
+  onSave: (
+    campaign: Omit<Campaign, 'id' | 'created_at'>,
+    dispatch: { fingerprint: string; recipientIds: string[] }
+  ) => void;
   contacts: Contact[];
   allowReports?: boolean;
 }) {
@@ -106,41 +105,56 @@ export default function NotificationModal({
     emailMessage?: string;
   } | null>(null);
 
-  // Channels selection: SMS (Africa's Talking), Email (Free Tool)
   const [useSMS, setUseSMS] = useState(true);
   const [useEmail, setUseEmail] = useState(false);
-
   const messageRef = useRef<HTMLTextAreaElement>(null);
 
-  // Filter contacts with valid phone or email
   const validContacts = useMemo(() => {
-    return contacts.filter((c) => {
-      const hasPhone = c.phone && c.phone.replace(/\D/g, '').length >= 8;
-      const hasEmail = c.email && c.email.includes('@');
+    return contacts.filter((contact) => {
+      const hasPhone =
+        Boolean(contact.phone) &&
+        contact.phone.replace(/\D/g, '').length >= 8;
+      const hasEmail =
+        Boolean(contact.email) && contact.email.includes('@');
+
       if (useSMS && useEmail) return hasPhone || hasEmail;
       if (useSMS) return hasPhone;
       if (useEmail) return hasEmail;
-      return true;
+      return false;
     });
   }, [contacts, useSMS, useEmail]);
 
   const targetedContacts = useMemo(() => {
     if (recipientMode === 'ALL') return validContacts;
-    return validContacts.filter((c) => selectedContactIds.includes(c.id));
+
+    return validContacts.filter((contact) =>
+      selectedContactIds.includes(contact.id)
+    );
   }, [validContacts, recipientMode, selectedContactIds]);
 
   const recipientCount = targetedContacts.length;
   const smsCostEstimate = calculateSMSCost(recipientCount, message.length);
 
-  const minDateTime = new Date(Date.now() - new Date().getTimezoneOffset() * 60_000).toISOString().slice(0, 16);
-  const isScheduleValid = actionType !== 'SCHEDULE' || Boolean(scheduledDate && new Date(scheduledDate).getTime() > Date.now());
+  const minDateTime = new Date(
+    Date.now() - new Date().getTimezoneOffset() * 60_000
+  )
+    .toISOString()
+    .slice(0, 16);
+
+  const isScheduleValid =
+    actionType !== 'SCHEDULE' ||
+    Boolean(
+      scheduledDate &&
+        new Date(scheduledDate).getTime() > Date.now()
+    );
+
   const canSubmit = Boolean(
     title.trim() &&
-    message.trim() &&
-    recipientCount > 0 &&
-    (useSMS || useEmail) &&
-    isScheduleValid &&
-    !isSending
+      message.trim() &&
+      recipientCount > 0 &&
+      (useSMS || useEmail) &&
+      isScheduleValid &&
+      !isSending
   );
 
   useEffect(() => {
@@ -148,6 +162,7 @@ export default function NotificationModal({
     setTitle(template.title);
     setMessage(template.message);
     setError('');
+    setSendResult(null);
   }, [category]);
 
   function updateCategory(event: ChangeEvent<HTMLSelectElement>) {
@@ -156,21 +171,29 @@ export default function NotificationModal({
 
   function toggleContact(id: string) {
     setSelectedContactIds((selected) =>
-      selected.includes(id) ? selected.filter((item) => item !== id) : [...selected, id]
+      selected.includes(id)
+        ? selected.filter((item) => item !== id)
+        : [...selected, id]
     );
   }
 
   function insertTag(tag: string) {
     const textarea = messageRef.current;
     if (!textarea) return;
+
     const start = textarea.selectionStart;
     const end = textarea.selectionEnd;
     const updated = `${message.slice(0, start)}${tag}${message.slice(end)}`;
+
     setMessage(updated);
     setError('');
+
     requestAnimationFrame(() => {
       textarea.focus();
-      textarea.setSelectionRange(start + tag.length, start + tag.length);
+      textarea.setSelectionRange(
+        start + tag.length,
+        start + tag.length
+      );
     });
   }
 
@@ -179,27 +202,41 @@ export default function NotificationModal({
       setError('Add a title and message.');
       return;
     }
+
     if (!useSMS && !useEmail) {
-      setError('Choose text message or email.');
+      setError('Choose SMS, email, or both.');
       return;
     }
+
     if (recipientCount === 0) {
-      setError(recipientMode === 'SELECT' ? 'Choose at least one parent contact.' : 'No parents have contact details for this message.');
+      setError(
+        recipientMode === 'SELECT'
+          ? 'Choose at least one parent contact.'
+          : 'No parents have valid contact details for the selected channels.'
+      );
       return;
     }
-    if (actionType === 'SCHEDULE' && (!scheduledDate || new Date(scheduledDate).getTime() <= Date.now())) {
+
+    if (
+      actionType === 'SCHEDULE' &&
+      (!scheduledDate ||
+        new Date(scheduledDate).getTime() <= Date.now())
+    ) {
       setError('Choose a date and time in the future.');
       return;
     }
 
-    const recipientIds = targetedContacts.map((c) => c.id).sort();
-    const dedupeKey = `${category}|${message.trim()}|${recipientIds.join(',')}`;
+    const recipientIds = targetedContacts
+      .map((contact) => contact.id)
+      .sort();
+
+    const dedupeKey =
+      `${category}|${message.trim()}|${recipientIds.join(',')}`;
 
     const channels: string[] = [];
-    if (useSMS) channels.push('SMS (Africa\'s Talking)');
-    if (useEmail) channels.push('Email (Free Tool)');
+    if (useSMS) channels.push("SMS (Africa's Talking)");
+    if (useEmail) channels.push('Email');
 
-    // If saving as Draft or Scheduling, do not dispatch immediately
     if (actionType === 'SAVE_DRAFT' || actionType === 'SCHEDULE') {
       onSave(
         {
@@ -209,76 +246,145 @@ export default function NotificationModal({
           recipient_count: recipientCount,
           status: actionType === 'SCHEDULE' ? 'Scheduled' : 'Draft',
           category,
-          ...(actionType === 'SCHEDULE' ? { scheduled_for: new Date(scheduledDate).toISOString() } : {}),
+          ...(actionType === 'SCHEDULE'
+            ? { scheduled_for: new Date(scheduledDate).toISOString() }
+            : {}),
         },
         { fingerprint: dedupeKey, recipientIds }
       );
       return;
     }
 
-    // Direct automated execution
     setIsSending(true);
     setError('');
+    setSendResult(null);
 
     try {
-      let smsResult;
-      let emailResult;
+      let smsSentCount = 0;
+      let smsCostDetails: string[] = [];
+      let emailSentCount = 0;
+      let emailWasSimulated = false;
 
-      // 1. Africa's Talking Bulk SMS Dispatch
+      /*
+       * Each SMS is personalized for its own student.
+       * The current SMS endpoint accepts one message body per request,
+       * so each recipient is sent the correctly personalized message.
+       */
       if (useSMS) {
-        const phoneList = targetedContacts
-          .map((c) => c.phone)
-          .filter(Boolean);
+        const smsContacts = targetedContacts.filter(
+          (contact) =>
+            contact.phone &&
+            contact.phone.replace(/\D/g, '').length >= 8
+        );
 
-        if (phoneList.length > 0) {
-          smsResult = await sendAfricasTalkingBulkSMS({
-            to: phoneList,
-            message: message.trim(),
+        for (const contact of smsContacts) {
+          const personalized = personalizeMessage(
+            message.trim(),
+            contact
+          );
+
+          const result = await sendAfricasTalkingBulkSMS({
+            to: [contact.phone],
+            message: personalized,
           });
+
+          const accepted = result.recipients.filter(
+            (recipient) =>
+              recipient.status === 'Success' ||
+              recipient.status === 'Queued'
+          ).length;
+
+          smsSentCount += accepted;
+          if (result.totalCost) smsCostDetails.push(result.totalCost);
         }
       }
 
-      // 2. Free Email Tool Dispatch
+      /*
+       * Send one personalized email per parent.
+       * This works with the existing email service without changing
+       * its API or sending the same placeholders to every recipient.
+       */
       if (useEmail) {
-        const emailList = targetedContacts
-          .filter((c) => c.email && c.email.includes('@'))
-          .map((c) => ({
-            email: c.email,
-            name: c.parent_name,
-            studentName: c.student_name,
-          }));
+        const emailContacts = targetedContacts.filter(
+          (contact) =>
+            contact.email && contact.email.includes('@')
+        );
 
-        if (emailList.length > 0) {
-          emailResult = await sendBulkEmail({
-            recipients: emailList,
+        for (const contact of emailContacts) {
+          const personalized = personalizeMessage(
+            message.trim(),
+            contact
+          );
+
+          const result = await sendBulkEmail({
+            recipients: [
+              {
+                email: contact.email,
+                name: contact.parent_name,
+                studentName: contact.student_name,
+              },
+            ],
             subject: title.trim(),
-            message: message.trim(),
+            message: personalized,
           });
+
+          emailSentCount += result.totalSent;
+          emailWasSimulated =
+            emailWasSimulated || Boolean(result.isSimulated);
         }
       }
 
-      // Record dispatch in Audit Ledger
+      const smsWasRequested = useSMS;
+      const emailWasRequested = useEmail;
+      const allRequestedChannelsSucceeded =
+        (!smsWasRequested || smsSentCount > 0) &&
+        (!emailWasRequested || emailSentCount > 0);
+
+      if (!allRequestedChannelsSucceeded) {
+        throw new Error(
+          `Delivery incomplete. SMS accepted: ${smsSentCount}; email results: ${emailSentCount}. Check the provider configuration and logs.`
+        );
+      }
+
+      const smsSummary = useSMS
+        ? `${smsSentCount} personalized SMS message(s) accepted`
+        : undefined;
+
+      const emailSummary = useEmail
+        ? emailWasSimulated
+          ? `${emailSentCount} email(s) simulated; no real email provider confirmed delivery`
+          : `${emailSentCount} email(s) accepted by the email provider`
+        : undefined;
+
       addDispatchLog({
         channel: useSMS && useEmail ? 'BOTH' : useSMS ? 'SMS' : 'EMAIL',
         category,
         title: title.trim(),
         previewMessage: message.trim().slice(0, 100),
         recipientCount,
-        recipientDetails: `${recipientCount} parents (${channels.join(', ')})`,
-        smsStatus: smsResult ? 'Sent (101)' : undefined,
-        smsCost: smsResult?.totalCost,
-        smsMessageId: smsResult?.recipients[0]?.messageId,
-        emailStatus: emailResult ? 'Delivered' : undefined,
-        emailProvider: 'Free Email Tool',
+        recipientDetails:
+          `${recipientCount} parent contact(s); ` +
+          `${smsSentCount} SMS accepted; ${emailSentCount} email result(s)`,
+        smsStatus: useSMS ? `Accepted (${smsSentCount})` : undefined,
+        smsCost: smsCostDetails.length
+          ? smsCostDetails.join(' + ')
+          : undefined,
+        emailStatus: useEmail
+          ? emailWasSimulated
+            ? 'Simulated — not actually delivered'
+            : `Provider accepted ${emailSentCount}`
+          : undefined,
+        emailProvider: useEmail ? 'Configured Email Service' : undefined,
       });
 
       setSendResult({
-        smsMessage: smsResult?.message,
-        smsCost: smsResult?.totalCost,
-        emailMessage: emailResult?.message,
+        smsMessage: smsSummary,
+        smsCost: smsCostDetails.length
+          ? smsCostDetails.join(' + ')
+          : undefined,
+        emailMessage: emailSummary,
       });
 
-      // Save campaign record with 'Sent' status
       onSave(
         {
           title: title.trim(),
@@ -292,17 +398,30 @@ export default function NotificationModal({
       );
     } catch (err: unknown) {
       console.error('Dispatch failed', err);
-      setError('We couldn’t send the message. Please try again.');
+      setError(
+        err instanceof Error
+          ? err.message
+          : 'We couldn’t send the message. Please check the delivery configuration and try again.'
+      );
     } finally {
       setIsSending(false);
     }
   }
 
-  const categoryOptions = ([
-    { value: 'FEES', label: '1. School Fees Balance Reminder ({FEES} calculation)' },
-    { value: 'GENERAL', label: '2. General Announcement (PTA assembly, academic calendar)' },
-    { value: 'REPORT', label: '3. Student Academic Report ({FULLNAME} & {REPORTLINK})' },
-  ] as { value: Category; label: string }[]).filter((opt) => allowReports || opt.value !== 'REPORT');
+  const categoryOptions = [
+    {
+      value: 'FEES',
+      label: '1. School Fees Balance Reminder',
+    },
+    {
+      value: 'ANNOUNCEMENT',
+      label: '2. General Announcement',
+    },
+    {
+      value: 'REPORT',
+      label: '3. Student Academic Report',
+    },
+  ].filter((option) => allowReports || option.value !== 'REPORT');
 
   return (
     <div
@@ -312,14 +431,16 @@ export default function NotificationModal({
       className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm"
     >
       <div className="system-modal w-full max-w-2xl max-h-[92vh] flex flex-col overflow-hidden bg-white rounded-lg shadow-xl border border-slate-300">
-        {/* Modal Header */}
         <div className="system-modal-header flex items-center justify-between px-5 py-3.5 bg-[#3b2314] text-white border-b-2 border-[#ea580c]">
           <div>
-            <h2 id="notification-modal-title" className="text-sm font-bold uppercase tracking-wider">
+            <h2
+              id="notification-modal-title"
+              className="text-sm font-bold uppercase tracking-wider"
+            >
               Send Parent Notice
             </h2>
             <p className="text-[11px] text-[#fed7aa] mt-0.5">
-              SMS and or Email
+              SMS and/or email
             </p>
           </div>
           <button
@@ -332,17 +453,22 @@ export default function NotificationModal({
           </button>
         </div>
 
-        {/* Modal Body */}
         <div className="flex-1 overflow-y-auto p-5 space-y-4 text-xs">
-          {/* Success Banner if already sent */}
           {sendResult && (
             <div className="p-3 bg-emerald-50 border border-emerald-300 rounded text-emerald-900 flex items-start gap-2.5">
-              <CheckCircle2 size={18} className="text-emerald-700 shrink-0 mt-0.5" />
+              <CheckCircle2
+                size={18}
+                className="text-emerald-700 shrink-0 mt-0.5"
+              />
               <div>
-                <strong className="block font-semibold">Message sent successfully!</strong>
+                <strong className="block font-semibold">
+                  Dispatch results
+                </strong>
                 {sendResult.smsMessage && (
                   <p className="text-[11px] mt-0.5">
-                    SMS: {sendResult.smsMessage} {sendResult.smsCost && `(${sendResult.smsCost})`}
+                    SMS: {sendResult.smsMessage}
+                    {sendResult.smsCost &&
+                      ` (reported cost: ${sendResult.smsCost})`}
                   </p>
                 )}
                 {sendResult.emailMessage && (
@@ -354,7 +480,6 @@ export default function NotificationModal({
             </div>
           )}
 
-          {/* Section: Category & Title */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <label className="block text-[11px] font-bold text-slate-700 uppercase mb-1">
@@ -365,13 +490,14 @@ export default function NotificationModal({
                 onChange={updateCategory}
                 className="form-input w-full bg-white font-medium"
               >
-                {categoryOptions.map((opt) => (
-                  <option key={opt.value} value={opt.value}>
-                    {opt.label}
+                {categoryOptions.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
                   </option>
                 ))}
               </select>
             </div>
+
             <div>
               <label className="block text-[11px] font-bold text-slate-700 uppercase mb-1">
                 Notice Title <span className="text-[#ea580c]">*</span>
@@ -379,14 +505,13 @@ export default function NotificationModal({
               <input
                 type="text"
                 value={title}
-                onChange={(e) => setTitle(e.target.value)}
+                onChange={(event) => setTitle(event.target.value)}
                 placeholder="e.g. Term II Fees Clearance Alert"
                 className="form-input w-full"
               />
             </div>
           </div>
 
-          {/* Delivery Channels Selector */}
           <div>
             <label className="block text-[11px] font-bold text-slate-700 uppercase mb-1.5">
               Delivery Channels <span className="text-[#ea580c]">*</span>
@@ -402,16 +527,19 @@ export default function NotificationModal({
                 <input
                   type="checkbox"
                   checked={useSMS}
-                  onChange={(e) => setUseSMS(e.target.checked)}
+                  onChange={(event) => setUseSMS(event.target.checked)}
                   className="mt-0.5 accent-[#ea580c]"
                 />
                 <div>
                   <div className="flex items-center gap-1.5">
-                    <Smartphone size={14} className={useSMS ? 'text-[#ea580c]' : 'text-slate-400'} />
+                    <Smartphone
+                      size={14}
+                      className={useSMS ? 'text-[#ea580c]' : 'text-slate-400'}
+                    />
                     <strong className="text-xs font-semibold">SMS</strong>
                   </div>
                   <p className="text-[10px] text-slate-500 mt-0.5">
-                    Direct SMS to parent numbers
+                    Personalized messages to parent numbers
                   </p>
                 </div>
               </label>
@@ -426,30 +554,37 @@ export default function NotificationModal({
                 <input
                   type="checkbox"
                   checked={useEmail}
-                  onChange={(e) => setUseEmail(e.target.checked)}
+                  onChange={(event) => setUseEmail(event.target.checked)}
                   className="mt-0.5 accent-emerald-700"
                 />
                 <div>
                   <div className="flex items-center gap-1.5">
-                    <Mail size={14} className={useEmail ? 'text-emerald-700' : 'text-slate-400'} />
+                    <Mail
+                      size={14}
+                      className={useEmail ? 'text-emerald-700' : 'text-slate-400'}
+                    />
                     <strong className="text-xs font-semibold">Email</strong>
                   </div>
                   <p className="text-[10px] text-slate-500 mt-0.5">
-                    Send this message to parents by email.
+                    Personalized email for each parent
                   </p>
                 </div>
               </label>
             </div>
           </div>
 
-          {/* Message Textarea & Dynamic Tags */}
           <div>
             <div className="flex items-center justify-between mb-1">
-              <label htmlFor="broadcast-message" className="text-[11px] font-bold text-slate-700 uppercase">
-                Broadcast Message Content <span className="text-red-500">*</span>
+              <label
+                htmlFor="broadcast-message"
+                className="text-[11px] font-bold text-slate-700 uppercase"
+              >
+                Message Content <span className="text-red-500">*</span>
               </label>
-              <div className="flex items-center gap-1">
-                <span className="text-[10px] text-slate-400">Insert Tag:</span>
+              <div className="flex items-center gap-1 flex-wrap justify-end">
+                <span className="text-[10px] text-slate-400">
+                  Insert Tag:
+                </span>
                 {templates[category].tags.map((tag) => (
                   <button
                     key={tag}
@@ -462,37 +597,39 @@ export default function NotificationModal({
                 ))}
               </div>
             </div>
+
             <textarea
               id="broadcast-message"
               ref={messageRef}
               rows={3}
               value={message}
-              onChange={(e) => setMessage(e.target.value)}
+              onChange={(event) => setMessage(event.target.value)}
               placeholder="Enter message for parents..."
               className="form-input w-full font-sans text-xs resize-y"
             />
-            {/* Live SMS Cost & Segment Counter */}
+
             <div className="mt-1 flex items-center justify-between text-[11px] text-slate-500">
-              <div className="flex items-center gap-3">
-                <span className="font-mono">Length: {message.length} chars</span>
+              <div className="flex items-center gap-3 flex-wrap">
+                <span className="font-mono">
+                  Length: {message.length} chars
+                </span>
                 {useSMS && (
                   <span className="text-emerald-800 font-medium flex items-center gap-1">
                     <DollarSign size={12} />
-                    {smsCostEstimate.segments} SMS segment(s) · Est. Cost: ~RWF {smsCostEstimate.estimatedCostRwf}
+                    Estimated: ~RWF {smsCostEstimate.estimatedCostRwf}
                   </span>
                 )}
               </div>
               <span className="text-[10px] text-slate-400 font-mono">
-                 Bulk Spec
+                Per-recipient personalization
               </span>
             </div>
           </div>
 
-          {/* Target Parent Recipients */}
           <div>
-            <div className="flex items-center justify-between mb-1.5">
+            <div className="flex items-center justify-between mb-1.5 gap-2 flex-wrap">
               <label className="text-[11px] font-bold text-slate-700 uppercase">
-                Target Recipients ({recipientCount} Selected)
+                Target Recipients ({recipientCount} selected)
               </label>
               <div className="flex items-center gap-2">
                 <button
@@ -522,20 +659,24 @@ export default function NotificationModal({
               </div>
             </div>
 
-            {/* Recipient list preview */}
             <div className="max-h-36 overflow-y-auto rounded border border-slate-200 bg-slate-50 p-2 space-y-1">
               {validContacts.length === 0 ? (
                 <p className="text-[11px] text-slate-500 italic p-2 text-center">
                   No eligible contacts found for the selected channels.
                 </p>
               ) : (
-                validContacts.map((c) => {
-                  const isChecked = recipientMode === 'ALL' || selectedContactIds.includes(c.id);
+                validContacts.map((contact) => {
+                  const isChecked =
+                    recipientMode === 'ALL' ||
+                    selectedContactIds.includes(contact.id);
+
                   return (
                     <label
-                      key={c.id}
-                      className={`flex items-center justify-between p-1.5 rounded bg-white border border-slate-200 text-xs ${
-                        recipientMode === 'SELECT' ? 'cursor-pointer hover:bg-slate-50' : ''
+                      key={contact.id}
+                      className={`flex items-center justify-between gap-2 p-1.5 rounded bg-white border border-slate-200 text-xs ${
+                        recipientMode === 'SELECT'
+                          ? 'cursor-pointer hover:bg-slate-50'
+                          : ''
                       }`}
                     >
                       <div className="flex items-center gap-2 min-w-0">
@@ -543,20 +684,29 @@ export default function NotificationModal({
                           <input
                             type="checkbox"
                             checked={isChecked}
-                            onChange={() => toggleContact(c.id)}
+                            onChange={() => toggleContact(contact.id)}
                             className="accent-emerald-700"
                           />
                         )}
                         <span className="truncate">
-                          <strong className="text-slate-800">{c.parent_name}</strong>
+                          <strong className="text-slate-800">
+                            {contact.parent_name || 'Parent not recorded'}
+                          </strong>
                           <span className="text-slate-400 text-[10px] ml-1.5">
-                            ({c.student_name} · {c.class_name})
+                            ({contact.student_name || 'Student not recorded'} ·{' '}
+                            {contact.class_name || 'Class not recorded'})
                           </span>
                         </span>
                       </div>
-                      <div className="text-[10px] text-slate-500 font-mono shrink-0 ml-2">
-                        {useSMS && c.phone && <span>{formatRwandaPhone(c.phone)}</span>}
-                        {useEmail && c.email && <span className="ml-2 text-slate-400">&lt;{c.email}&gt;</span>}
+                      <div className="text-[10px] text-slate-500 font-mono shrink-0">
+                        {useSMS && contact.phone && (
+                          <span>{formatRwandaPhone(contact.phone)}</span>
+                        )}
+                        {useEmail && contact.email && (
+                          <span className="ml-2 text-slate-400">
+                            &lt;{contact.email}&gt;
+                          </span>
+                        )}
                       </div>
                     </label>
                   );
@@ -565,21 +715,37 @@ export default function NotificationModal({
             </div>
           </div>
 
-          {/* Action Choice: Send Now / Save Draft / Schedule */}
           <div>
             <label className="block text-[11px] font-bold text-slate-700 uppercase mb-1.5">
               Execution Mode
             </label>
-            <div className="grid grid-cols-3 gap-2">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
               {[
-                { type: 'SEND_NOW', label: 'Send Automated Now', desc: 'Execute live bulk delivery', icon: Send },
-                { type: 'SAVE_DRAFT', label: 'Save as Draft', desc: 'Hold in broadcast records', icon: Check },
-                { type: 'SCHEDULE', label: 'Schedule Dispatch', desc: 'Set future date & time', icon: Clock3 },
+                {
+                  type: 'SEND_NOW',
+                  label: 'Send Now',
+                  desc: 'Execute delivery now',
+                  icon: Send,
+                },
+                {
+                  type: 'SAVE_DRAFT',
+                  label: 'Save as Draft',
+                  desc: 'Save without sending',
+                  icon: Check,
+                },
+                {
+                  type: 'SCHEDULE',
+                  label: 'Schedule Dispatch',
+                  desc: 'Choose future date/time',
+                  icon: Clock3,
+                },
               ].map((item) => (
                 <button
                   key={item.type}
                   type="button"
-                  onClick={() => setActionType(item.type as DispatchAction)}
+                  onClick={() =>
+                    setActionType(item.type as DispatchAction)
+                  }
                   className={`p-2.5 rounded border text-left transition ${
                     actionType === item.type
                       ? 'border-institutional-green bg-emerald-50 text-emerald-950 font-bold'
@@ -588,7 +754,9 @@ export default function NotificationModal({
                 >
                   <item.icon size={14} className="mb-1 text-slate-700" />
                   <div className="text-xs font-semibold">{item.label}</div>
-                  <div className="text-[10px] text-slate-500 font-normal">{item.desc}</div>
+                  <div className="text-[10px] text-slate-500 font-normal">
+                    {item.desc}
+                  </div>
                 </button>
               ))}
             </div>
@@ -597,15 +765,20 @@ export default function NotificationModal({
           {actionType === 'SCHEDULE' && (
             <div>
               <label className="block text-[11px] font-bold text-slate-700 uppercase mb-1">
-                Select Dispatch Date & Time <span className="text-red-500">*</span>
+                Select Dispatch Date & Time{' '}
+                <span className="text-red-500">*</span>
               </label>
               <input
                 type="datetime-local"
                 min={minDateTime}
                 value={scheduledDate}
-                onChange={(e) => setScheduledDate(e.target.value)}
+                onChange={(event) => setScheduledDate(event.target.value)}
                 className="form-input w-full"
               />
+              <p className="mt-1 text-[10px] text-slate-500">
+                This saves a scheduled campaign. It does not send automatically
+                unless a scheduling worker is configured.
+              </p>
             </div>
           )}
 
@@ -617,18 +790,21 @@ export default function NotificationModal({
           )}
         </div>
 
-        {/* Modal Footer */}
-        <div className="system-modal-footer flex items-center justify-between px-5 py-3.5 bg-slate-50 border-t border-slate-200">
+        <div className="system-modal-footer flex items-center justify-between gap-3 px-5 py-3.5 bg-slate-50 border-t border-slate-200">
           <div className="text-[11px] text-slate-500">
             {actionType === 'SEND_NOW' ? (
-              <span>Sending to <strong className="text-slate-800">{recipientCount}</strong> parent(s) via school SMS & email</span>
+              <span>
+                Sending to <strong className="text-slate-800">{recipientCount}</strong>{' '}
+                parent contact(s)
+              </span>
             ) : actionType === 'SCHEDULE' ? (
-              <span>Will schedule for {scheduledDate || 'selected date'}</span>
+              <span>Will save schedule for {scheduledDate || 'selected date'}</span>
             ) : (
               <span>Will save as draft</span>
             )}
           </div>
-          <div className="flex items-center gap-2">
+
+          <div className="flex items-center gap-2 shrink-0">
             <button
               type="button"
               onClick={onClose}
@@ -646,7 +822,7 @@ export default function NotificationModal({
               {isSending ? (
                 <>
                   <Loader2 size={13} className="animate-spin" />
-                  Sending notice...
+                  Sending...
                 </>
               ) : actionType === 'SEND_NOW' ? (
                 <>
@@ -656,7 +832,7 @@ export default function NotificationModal({
               ) : actionType === 'SCHEDULE' ? (
                 <>
                   <Clock3 size={13} />
-                  Schedule notice
+                  Save schedule
                 </>
               ) : (
                 <>
