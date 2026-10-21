@@ -9,7 +9,8 @@ const corsHeaders = {
 };
 
 const defaultApiUrl =
-  'https://api.sandbox.africastalking.com/version1/messaging';
+      'https://api.africastalking.com/version1/messaging'
+  // 'https://api.sandbox.africastalking.com/version1/messaging';
 
 const allowedApiUrls = new Set([
   'https://api.sandbox.africastalking.com/version1/messaging',

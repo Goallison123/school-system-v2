@@ -5,7 +5,6 @@ import {
   Search,
   Plus,
   Pencil,
-  Trash2,
   X,
   Users,
   CheckCircle2,
@@ -54,6 +53,8 @@ const classes = [
   "S5 ARH", "S5 STREAM 2",
   "S6 MPC", "S6 HGL"
 ];
+
+const initialStudents: Student[] = [];
 
 const emptyForm = {
   fullName: "",
@@ -324,7 +325,6 @@ export default function Students() {
     }
   }
 
-  // ARCHIVE INSTEAD OF DELETE
   function confirmArchive(student: Student) {
     setStudentToArchive(student);
     setArchiveReason("");
@@ -335,29 +335,25 @@ export default function Students() {
     const reason = archiveReason.trim() || "Deleted by admin";
 
     if (supabase) {
-      // 1. Save to archive subfolder table
       const { error: archiveError } = await supabase.from("school_students_archive").insert(toArchivePayload(studentToArchive, reason));
       if (archiveError) {
         console.error("Archive failed", archiveError);
         notify("Failed to archive student. Try again, refresh your browser or talk to the school IT.");
         return;
       }
-      // 2. Delete from main table
       const { error: deleteError } = await supabase.from("school_students").delete().eq("id", studentToArchive.id);
       if (deleteError) {
         console.error("Delete after archive failed", deleteError);
-        // rollback archive
         await supabase.from("school_students_archive").delete().eq("original_id", studentToArchive.id);
         notify("Failed to remove from registry.");
         return;
       }
     }
 
-    // Local state update
     const archived: ArchivedStudent = {
       ...studentToArchive,
       originalId: studentToArchive.id,
-      archivedAt: new Date().toLocaleString(),
+      archivedAt: new Date().toISOString(),
       archivedReason: reason,
     };
     setArchivedStudents((curr) => [archived, ...curr]);
@@ -373,13 +369,13 @@ export default function Students() {
       const payload = toStudentPayload({ ...student, registryCode: student.registryCode });
       const { data, error } = await supabase.from("school_students").insert(payload).select("*").maybeSingle();
       if (error || !data) { notify("Restore failed."); return; }
-      await supabase.from("school_students_archive").delete().eq("original_id", student.originalId).eq("registry_code", student.registryCode);
+      await supabase.from("school_students_archive").delete().eq("original_id", student.originalId);
       const restored = toStudentRecord(data as unknown as Record<string, unknown>);
       setStudents((curr) => [restored, ...curr]);
     } else {
       setStudents((curr) => [...curr, { ...student, id: student.originalId, lastUpdated: "Restored" }]);
     }
-    setArchivedStudents((curr) => curr.filter((s) => s.originalId !== student.originalId || s.registryCode !== student.registryCode));
+    setArchivedStudents((curr) => curr.filter((s) => s.originalId !== student.originalId));
     notify(`Restored ${student.fullName}.`);
   }
 
@@ -492,8 +488,12 @@ export default function Students() {
             </thead>
             <tbody>
               {filteredStudents.length > 0 ? (
-                filteredStudents.map((student) => (
-                  <tr key={`${student.id}-${(student as ArchivedStudent).archivedAt ?? ""}`} className="cursor-pointer" onClick={() => activeSubMenu !== "archive" && openEdit(student as Student)}>
+                filteredStudents.map((student, index) => (
+                  <tr 
+                    key={`${student.id}-${student.registryCode}-${index}`} 
+                    className="cursor-pointer" 
+                    onClick={() => activeSubMenu !== "archive" && openEdit(student as Student)}
+                  >
                     <td className="font-mono text-emerald-800 font-semibold">{student.registryCode ?? student.id}</td>
                     <td><span className="font-semibold text-slate-900 block">{student.fullName}</span><span className="text-[11px] text-slate-500">{student.stream ?? 'General'}</span>{activeSubMenu === "archive" && <span className="text-[10px] text-amber-600 block">{(student as ArchivedStudent).archivedReason}</span>}</td>
                     <td><span className="font-medium">{student.studentClass}</span></td>

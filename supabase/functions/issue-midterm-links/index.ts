@@ -1,270 +1,158 @@
-
 import { createClient } from "npm:@supabase/supabase-js@2";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers":
-    "authorization, apikey, content-type, x-client-info",
+  "Access-Control-Allow-Headers": "authorization, apikey, content-type, x-client-info",
   "Content-Type": "application/json",
 };
 
 function json(data: unknown, status = 200) {
-  return new Response(JSON.stringify(data), {
-    status,
-    headers: { ...corsHeaders, "Cache-Control": "no-store" },
-  });
+  return new Response(JSON.stringify(data), { status, headers: { ...corsHeaders, "Cache-Control": "no-store" } });
 }
 
 async function sha256(value: string): Promise<string> {
-  const digest = await crypto.subtle.digest(
-    "SHA-256",
-    new TextEncoder().encode(value),
-  );
-
-  return Array.from(new Uint8Array(digest))
-    .map((b) => b.toString(16).padStart(2, "0"))
-    .join("");
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value));
+  return Array.from(new Uint8Array(digest)).map((b) => b.toString(16).padStart(2, "0")).join("");
 }
 
 Deno.serve(async (req) => {
-  if (req.method === "OPTIONS") {
-    return new Response("ok", { headers: corsHeaders });
-  }
-
-  if (req.method !== "POST") {
-    return json({ error: "Method not allowed." }, 405);
-  }
+  if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
+  if (req.method !== "POST") return json({ error: "Method not allowed." }, 405);
 
   try {
     const supabaseUrl = Deno.env.get("SUPABASE_URL");
     const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
     const anonKey = Deno.env.get("SUPABASE_ANON_KEY");
-
-    if (!supabaseUrl || !serviceKey || !anonKey) {
-      console.error("Required Supabase environment variables are missing.");
-      return json({ error: "Server configuration error." }, 500);
-    }
+    if (!supabaseUrl || !serviceKey || !anonKey) return json({ error: "Server configuration error." }, 500);
 
     const authHeader = req.headers.get("Authorization");
-    if (!authHeader?.startsWith("Bearer ")) {
-      return json({ error: "Authentication required." }, 401);
-    }
+    if (!authHeader?.startsWith("Bearer ")) return json({ error: "Authentication required." }, 401);
 
     const userClient = createClient(supabaseUrl, anonKey, {
       global: { headers: { Authorization: authHeader } },
       auth: { persistSession: false, autoRefreshToken: false },
     });
+    const { data: authData, error: authError } = await userClient.auth.getUser();
+    if (authError || !authData.user) return json({ error: "Your session is invalid." }, 401);
 
-    const { data: authData, error: authError } =
-      await userClient.auth.getUser();
+    const admin = createClient(supabaseUrl, serviceKey, { auth: { persistSession: false, autoRefreshToken: false } });
 
-    if (authError || !authData.user) {
-      return json({ error: "Your session is invalid or expired." }, 401);
-    }
-
-    const admin = createClient(supabaseUrl, serviceKey, {
-      auth: { persistSession: false, autoRefreshToken: false },
-    });
-
-    const { data: user, error: userError } = await admin
-      .from("users")
-      .select("role")
-      .eq("id", authData.user.id)
-      .maybeSingle();
-
-    if (userError) {
-      console.error("Role lookup failed:", userError.message);
-      return json({ error: "Unable to verify permissions." }, 500);
-    }
-
-    if (!user || user.role !== "dean_of_studies") {
-      return json({ error: "You are not authorized to publish reports." }, 403);
-    }
+    const { data: user, error: userError } = await admin.from("users").select("role").eq("id", authData.user.id).maybeSingle();
+    if (userError || !user || user.role !== "dean_of_studies") return json({ error: "You are not authorized." }, 403);
 
     const body = await req.json();
-    const reportIds = Array.isArray(body.report_ids)
-      ? [...new Set(body.report_ids.filter(
-          (id: unknown) => typeof id === "string",
-        ))]
-      : [];
-
-    if (reportIds.length === 0 || reportIds.length > 200) {
-      return json({ error: "Provide between 1 and 200 report IDs." }, 400);
-    }
+    const reportIds = Array.isArray(body.report_ids) ? [...new Set(body.report_ids.filter((id: unknown) => typeof id === "string"))] : [];
+    const force = body.force === true;
+    if (reportIds.length === 0 || reportIds.length > 200) return json({ error: "Provide between 1 and 200 report IDs." }, 400);
 
     const { data: reports, error: reportsError } = await admin
       .from("midterm_reports")
-      .select("id, student_name, period, access_token_hash")
+      .select("id, student_id, student_name, period, access_token_hash, access_token_expires_at, published_at")
       .in("id", reportIds)
       .eq("is_deleted", false);
 
-    if (reportsError) {
-      console.error("Report lookup failed:", reportsError.message);
-      return json({ error: "Unable to load reports." }, 500);
-    }
+    if (reportsError) return json({ error: "Unable to load reports." }, 500);
+    if (!reports || reports.length !== reportIds.length) return json({ error: "One or more reports not found." }, 404);
 
-    if (!reports || reports.length !== reportIds.length) {
-      return json({ error: "One or more reports were not found." }, 404);
-    }
-
-    const results: Array<{
-      report_id: string;
-      links_queued: number;
-    }> = [];
+    const links: Array<{ report_id: string; token: string; url: string; download_url: string; expires_at: string }> = [];
+    const results: Array<{ report_id: string; links_queued: number }> = [];
 
     for (const report of reports) {
-      const { data: contacts, error: contactsError } = await admin
-        .from("midterm_report_contacts")
-        .select("parent_name, phone, email")
-        .eq("report_id", report.id);
-
-      if (contactsError) {
-        console.error("Parent contact lookup failed:", contactsError.message);
-        return json({ error: "Unable to load parent contacts." }, 500);
+      // FIX 1: Get contacts from school_students if midterm_report_contacts is empty
+      let contacts: Array<{ parent_name?: string; phone?: string; email?: string }> = [];
+      const { data: mContacts } = await admin.from("midterm_report_contacts").select("parent_name, phone, email").eq("report_id", report.id);
+      if (mContacts && mContacts.length > 0) {
+        contacts = mContacts;
+      } else if (report.student_id) {
+        const { data: student } = await admin.from("school_students").select("parent_name, phone, email, full_name").eq("id", report.student_id).maybeSingle();
+        if (student) contacts = [{ parent_name: student.parent_name, phone: student.phone, email: student.email }];
       }
 
       const recipients = new Map<string, "email" | "sms">();
-
-      for (const contact of contacts ?? []) {
-        const email = String(contact.email ?? "").trim();
-        const phone = String(contact.phone ?? "").trim();
-
-        if (email && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-          recipients.set(`email:${email}`, "email");
-        }
-
-        if (phone) {
-          recipients.set(`sms:${phone}`, "sms");
-        }
+      for (const c of contacts ?? []) {
+        const email = String(c.email ?? "").trim();
+        const phone = String(c.phone ?? "").trim();
+        if (email && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) recipients.set(`email:${email}`, "email");
+        if (phone) recipients.set(`sms:${phone}`, "sms");
       }
 
-      if (recipients.size === 0) {
-        results.push({ report_id: report.id, links_queued: 0 });
-        continue;
-      }
+      // Even if no contacts, we still need to issue a link for frontend
+      let token: string;
+      let expiresAtStr: string;
 
-      // Reuse a still-valid token so retrying does not invalidate
-      // a link already sent to a parent.
-      let token: string | null = null;
-      let tokenHash = report.access_token_hash;
+      const currentExpires = report.access_token_expires_at ? new Date(report.access_token_expires_at).getTime() : 0;
+      const isStillValid = report.published_at && currentExpires > Date.now() && !force;
 
-      const { data: currentReport, error: currentError } = await admin
-        .from("midterm_reports")
-        .select("access_token_expires_at, published_at")
-        .eq("id", report.id)
-        .single();
-
-      if (currentError) {
-        console.error("Token status lookup failed:", currentError.message);
-        return json({ error: "Unable to check existing links." }, 500);
-      }
-
-      // A hash cannot be converted back into its original token.
-      // If no raw token is available, issue a new one and update the hash.
-      const expiresAt = currentReport.access_token_expires_at
-        ? new Date(currentReport.access_token_expires_at).getTime()
-        : 0;
-
-      if (!currentReport.published_at || expiresAt <= Date.now()) {
-        const bytes = crypto.getRandomValues(new Uint8Array(32));
-        token = Array.from(bytes)
-          .map((b) => b.toString(16).padStart(2, "0"))
-          .join("");
-
-        tokenHash = await sha256(token);
-
-        const expiry = new Date(
-          Date.now() + 30 * 24 * 60 * 60 * 1000,
-        ).toISOString();
-
-        const { error: updateError } = await admin
-          .from("midterm_reports")
-          .update({
-            access_token_hash: tokenHash,
-            access_token_expires_at: expiry,
-            published_at: new Date().toISOString(),
-          })
-          .eq("id", report.id);
-
-        if (updateError) {
-          console.error("Token update failed:", updateError.message);
-          return json({ error: "Unable to publish a report." }, 500);
-        }
-      } else {
-        // Existing hash is valid, but the original token is intentionally
-        // unrecoverable. Don't queue a broken link or silently rotate it.
-        const { data: pending } = await admin
-          .from("midterm_parent_notification_queue")
-          .select("recipient, channel, payload")
-          .eq("report_id", report.id)
-          .in("status", ["pending", "processing", "failed"]);
-
-        const queuedForReport = (pending ?? []).filter((item) =>
-          typeof item.payload?.download_url === "string"
-        ).length;
-
-        if (queuedForReport > 0) {
-          results.push({
+      if (isStillValid) {
+        // We cannot recover old token, so we MUST return 409 with instruction to use force:true
+        // Instead of failing completely, tell frontend it needs force
+        if (recipients.size === 0) {
+          // No queue needed, but return placeholder that will be replaced on force
+          token = "REUSE_BLOCKED_NEEDS_FORCE";
+          expiresAtStr = report.access_token_expires_at!;
+        } else {
+          // Check if we already have queued links
+          const { data: pending } = await admin.from("midterm_parent_notification_queue").select("payload").eq("report_id", report.id).in("status", ["pending","processing","failed"]);
+          const hasQueued = (pending ?? []).some(p => typeof (p as any).payload?.download_url === "string");
+          if (hasQueued) {
+            // Don't rotate, but we can't return token - frontend should re-use cached token from localStorage
+            results.push({ report_id: report.id, links_queued: pending!.length });
+            continue;
+          }
+          // Queue empty but token valid - need force to rotate, otherwise fail with clear message
+          return json({ 
+            error: "A link was previously issued but raw token is gone. Call with {report_ids, force:true} to re-issue.",
             report_id: report.id,
-            links_queued: queuedForReport,
-          });
-          continue;
+            needs_force: true
+          }, 409);
         }
-
-        return json({
-          error:
-            "A link was previously issued, but its original token is unavailable. Revoke that link before issuing a replacement.",
-          report_id: report.id,
-        }, 409);
       }
 
-      const downloadUrl =
-        `${supabaseUrl}/functions/v1/download-midterm-report?token=${token}`;
+      // Generate new token
+      if (!isStillValid || force || token! === "REUSE_BLOCKED_NEEDS_FORCE") {
+        const bytes = crypto.getRandomValues(new Uint8Array(32));
+        token = Array.from(bytes).map((b) => b.toString(16).padStart(2, "0")).join("");
+        const tokenHash = await sha256(token);
+        expiresAtStr = new Date(Date.now() + 30*24*60*60*1000).toISOString();
 
-      let linksQueued = 0;
+        const { error: updateError } = await admin.from("midterm_reports").update({
+          access_token_hash: tokenHash,
+          access_token_expires_at: expiresAtStr,
+          published_at: new Date().toISOString(),
+        }).eq("id", report.id);
 
+        if (updateError) return json({ error: "Unable to publish report." }, 500);
+      }
+
+      const downloadUrl = `${supabaseUrl}/functions/v1/download-midterm-report?token=${token!}`;
+      // FIX 2: Return token + url to frontend
+      links.push({ report_id: report.id, token: token!, url: downloadUrl, download_url: downloadUrl, expires_at: expiresAtStr! });
+
+      // Queue notifications if we have contacts
+      let queued = 0;
       for (const [key, channel] of recipients) {
         const recipient = key.slice(channel.length + 1);
-
         const message = channel === "email"
-          ? `Your student's ${report.period} report is ready. Download it securely here: ${downloadUrl}`
-          : `School report ready (${report.period}). Download securely: ${downloadUrl}`;
+          ? `Your student's ${report.period} report is ready. Download: ${downloadUrl}`
+          : `School report ready (${report.period}). Download: ${downloadUrl}`;
 
-        const { error: queueError } = await admin
-          .from("midterm_parent_notification_queue")
-          .upsert({
-            report_id: report.id,
-            channel,
-            recipient,
-            payload: {
-              message,
-              download_url: downloadUrl,
-              student_name: report.student_name,
-              period: report.period,
-            },
-            status: "pending",
-            updated_at: new Date().toISOString(),
-          }, {
-            onConflict: "report_id,channel,recipient",
-          });
-
-        if (queueError) {
-          console.error("Queue insert failed:", queueError.message);
-          return json({ error: "Unable to queue parent notifications." }, 500);
-        }
-
-        linksQueued++;
+        await admin.from("midterm_parent_notification_queue").upsert({
+          report_id: report.id,
+          channel,
+          recipient,
+          payload: { message, download_url: downloadUrl, student_name: report.student_name, period: report.period },
+          status: "pending",
+          updated_at: new Date().toISOString(),
+        }, { onConflict: "report_id,channel,recipient" });
+        queued++;
       }
-
-      results.push({
-        report_id: report.id,
-        links_queued: linksQueued,
-      });
+      results.push({ report_id: report.id, links_queued: queued });
     }
 
-    return json({ success: true, results });
-  } catch (error) {
-    console.error("Issue-links function failed:", error);
+    // FIX 2: Return both formats so old and new frontend work
+    return json({ success: true, results, links, data: links });
+  } catch (e) {
+    console.error("Issue-links failed:", e);
     return json({ error: "Unable to issue report links." }, 500);
   }
 });

@@ -14,6 +14,7 @@ import {
   Send,
   Smartphone,
   UnlockKeyhole,
+  Link2,
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import jsPDF from 'jspdf';
@@ -34,11 +35,22 @@ type Subject = { id: string; class_name: string; subject_name: string; is_enable
 type Period = { id: string; name: string; official_date: string; status: 'scheduled' | 'open' | 'finalized'; finalized_at: string | null; created_at: string; };
 type Mark = { id: string; period_id: string; student_id: string; class_name: string; subject_id: string; mark: number; updated_at: string; };
 type Report = {
-  id: string; period_id: string; period: string; student_id: string; student_name: string; class_name: string; average: number;
+  id: string; 
+  period_id: string; 
+  period: string; 
+  student_id: string; 
+  student_name: string; 
+  class_name: string; 
+  average: number;
   report_data: { rows?: Array<{ subject_id?: string; subject: string; mark: number; grade?: string; }>; };
   generated_at: string;
+  access_token_hash?: string | null;
+  access_token_expires_at?: string | null;
+  published_at?: string | null;
 };
-type ParentLink = { id: string; report_id: string; token: string; url: string; student_id: string; };
+
+// Raw token returned only once by edge function
+type IssuedToken = { report_id: string; token: string; url?: string; expires_at?: string; };
 
 const isDean = (role: Role) => role === 'dean_of_studies';
 const canManage = (role: Role) => isDean(role);
@@ -53,7 +65,9 @@ export default function MidTermEngine({ role, userId, notify }: Props) {
   const [periods, setPeriods] = useState<Period[]>([]);
   const [marks, setMarks] = useState<Mark[]>([]);
   const [reports, setReports] = useState<Report[]>([]);
-  const [parentLinks, setParentLinks] = useState<ParentLink[]>([]);
+  
+  // Store raw tokens - these are the actual links, hash in DB is not usable
+  const [issuedTokens, setIssuedTokens] = useState<Record<string, IssuedToken>>({});
 
   const [selectedPeriodId, setSelectedPeriodId] = useState('');
   const [selectedClass, setSelectedClass] = useState('');
@@ -78,17 +92,24 @@ export default function MidTermEngine({ role, userId, notify }: Props) {
   const periodMarks = useMemo(() => marks.filter((m) => m.period_id === selectedPeriodId), [marks, selectedPeriodId]);
   const periodReports = useMemo(() => reports.filter((r) => r.period_id === selectedPeriodId), [reports, selectedPeriodId]);
 
+  // Build the parent link from raw token - CHANGE THIS to match your frontend route
+  const buildParentLink = useCallback((report: Report, rawToken: string) => {
+    // Option 1: /parent-report/:id?token=xxx  (recommended, verifies id + token)
+    // Option 2: /r/:token
+    // Adjust to your actual route in App.tsx
+    return `${window.location.origin}/parent-report/${report.id}?token=${rawToken}`;
+  }, []);
+
   const refresh = useCallback(async () => {
     if (!supabase) { setError('The database connection is unavailable.'); setLoading(false); return; }
     setLoading(true); setError('');
     try {
-      const [studentsResult, subjectsResult, periodsResult, marksResult, reportsResult, linksResult] = await Promise.all([
+      const [studentsResult, subjectsResult, periodsResult, marksResult, reportsResult] = await Promise.all([
         supabase.from('school_students').select('id, full_name, class_name, stream, phone, email, parent_name').order('class_name').order('full_name'),
         supabase.from('midterm_subjects').select('id, class_name, subject_name, is_enabled').order('class_name').order('subject_name'),
         supabase.from('midterm_periods').select('id, name, official_date, status, finalized_at, created_at').order('created_at', { ascending: false }),
         supabase.from('student_midterm_marks').select('id, period_id, student_id, class_name, subject_id, mark, updated_at'),
-        supabase.from('midterm_reports').select('id, period_id, student_id, student_name, class_name, average, report_data, generated_at').order('generated_at', { ascending: false }).limit(2000),
-        supabase.from('midterm_parent_links').select('id, report_id, token, url, student_id').limit(2000),
+        supabase.from('midterm_reports').select('id, period_id, period, student_id, student_name, class_name, average, report_data, generated_at, access_token_hash, access_token_expires_at, published_at').order('generated_at', { ascending: false }).limit(2000),
       ]);
       const failed = [studentsResult.error, subjectsResult.error, periodsResult.error, marksResult.error, reportsResult.error].find(Boolean);
       if (failed) throw failed;
@@ -98,15 +119,20 @@ export default function MidTermEngine({ role, userId, notify }: Props) {
       setPeriods((periodsResult.data ?? []) as Period[]);
       setMarks((marksResult.data ?? []) as Mark[]);
       setReports((reportsResult.data ?? []) as Report[]);
-      setParentLinks((linksResult.data ?? []) as ParentLink[]);
+
+      // Restore tokens from localStorage (raw tokens are lost if not saved)
+      try {
+        const saved = localStorage.getItem(`midterm_tokens_${selectedPeriodId}`);
+        if (saved) setIssuedTokens(JSON.parse(saved));
+      } catch {}
 
       const availablePeriods = (periodsResult.data ?? []) as Period[];
       setSelectedPeriodId((cur) => availablePeriods.some((p) => p.id === cur) ? cur : availablePeriods[0]?.id ?? '');
     } catch (cause) {
       console.error('Could not load mid-term workspace:', cause);
-      setError('Could not load mid-term records. Contact the school IT for support.'); // check if the database migrations exist or whether there are some permission requirements set on the relation.
+      setError('Could not load mid-term records. Contact the school IT for support.');
     } finally { setLoading(false); }
-  }, []);
+  }, [selectedPeriodId]);
 
   useEffect(() => { void refresh(); }, [refresh]);
   useEffect(() => { if (!selectedClass && classes.length) setSelectedClass(classes[0]); }, [classes, selectedClass]);
@@ -123,8 +149,8 @@ export default function MidTermEngine({ role, userId, notify }: Props) {
       const { data, error: insertError } = await supabase.from('midterm_periods').insert({ name, official_date: newPeriodDate, status: 'open', created_by: userId ?? null }).select('id, name, official_date, status, finalized_at, created_at').single();
       if (insertError) throw insertError;
       setNewPeriodName(''); setNewPeriodDate(''); await refresh(); setSelectedPeriodId(data.id);
-      notify('Mid-term created.'); //Each mid-term is actually unique given that the generation period is always unique. Periods should be first locked to open newly scheduled ones.
-    } catch (cause) { console.error('Could not create mid-term:', cause); notify('Could not create the mid-term. Talk to the school IT for support.'); } // Check the database permissions.
+      notify('Mid-term created.');
+    } catch (cause) { console.error('Could not create mid-term:', cause); notify('Could not create the mid-term.'); }
     finally { setBusy(false); }
   }
 
@@ -145,7 +171,7 @@ export default function MidTermEngine({ role, userId, notify }: Props) {
       }, { onConflict: 'period_id,student_id,subject_id' });
       if (saveError) throw saveError;
       setMarkValue(''); notify('Mark saved.'); await refresh();
-    } catch (cause) { console.error('Could not save mark:', cause); notify('The mark could not be saved. The period may be locked.'); } // or database permissions may prevent the change.
+    } catch (cause) { console.error('Could not save mark:', cause); notify('The mark could not be saved. The period may be locked.'); }
     finally { setBusy(false); }
   }
 
@@ -173,20 +199,20 @@ export default function MidTermEngine({ role, userId, notify }: Props) {
       if (reportError) throw reportError;
       notify(`Generated ${reportsToCreate.length} report(s). The mid-term is still open and marks are not locked.`);
       await refresh();
-    } catch (cause) { console.error('Report generation failed:', cause); notify('Report generation failed.'); } // Check the database schema and permissions.
+    } catch (cause) { console.error('Report generation failed:', cause); notify('Report generation failed.'); }
     finally { setBusy(false); }
   }
 
- 
+  // FINALIZE + ISSUE LINKS - NOW SAVES RAW TOKENS
   async function finalizePeriod() {
     if (!supabase || !isDean(role) || busy) return;
     if (!selectedPeriod || isFinalized) { notify('Select an open mid-term first.'); return; }
     if (!classStudents.length || !classSubjects.length) { notify('This class has no students or enabled subjects.'); return; }
 
     const missingReports = classStudents.filter((student) => !periodReports.find((item) => item.student_id === student.id && item.period_id === selectedPeriod.id));
-    if (missingReports.length > 0) { notify(`${missingReports.length} student(s) still need reports. Generate and check all reports before locking.`); return; }
+    if (missingReports.length > 0) { notify(`${missingReports.length} student(s) still need reports.`); return; }
 
-    const confirmed = window.confirm(`Finalize "${selectedPeriod.name}"? This permanently locks marks for this mid-term. ${classStudents.length} student reports have been checked. Continue?`);
+    const confirmed = window.confirm(`Finalize "${selectedPeriod.name}"? This locks marks and generates secure parent links for ${classStudents.length} reports. Continue?`);
     if (!confirmed) return;
 
     setBusy(true);
@@ -195,74 +221,128 @@ export default function MidTermEngine({ role, userId, notify }: Props) {
         status: 'finalized', finalized_at: new Date().toISOString(), finalized_by: userId ?? null,
       }).eq('id', selectedPeriod.id).eq('status', 'open').select('id');
       if (finalizeError) throw finalizeError;
-      if (!data?.length) throw new Error('The period was not locked. It may already be finalized.');
+      if (!data?.length) throw new Error('The period was not locked.');
 
-
+      // ISSUE LINKS AND CAPTURE RAW TOKENS
       const reportIds = periodReports.map((r) => r.id);
       if (reportIds.length > 0) {
         const { data: linkData, error: linkError } = await supabase.functions.invoke('issue-midterm-links', { body: { report_ids: reportIds } });
         if (linkError) {
           console.error('Parent link generation failed:', linkError);
-          notify('Mid-term locked, but parent link generation failed. You can retry from the finalized view.');
+          notify('Mid-term locked, but link generation failed. Check edge function logs.');
         } else {
-          console.info('Parent links issued:', linkData);
-          notify(`Mid-term locked and ${reportIds.length} secure parent links generated. Now send notices to parents.`);
+          // Handle different response shapes
+          const linksArray: IssuedToken[] = (linkData as any)?.links || (linkData as any)?.data || (Array.isArray(linkData) ? linkData : []) as any;
+          console.info('Parent links issued:', linksArray);
+
+          const tokenMap: Record<string, IssuedToken> = {};
+          linksArray.forEach((item: any) => {
+            const reportId = item.report_id || item.id;
+            const token = item.token || item.raw_token || item.access_token;
+            if (reportId && token) {
+              tokenMap[reportId] = {
+                report_id: reportId,
+                token,
+                url: item.url || buildParentLink({ id: reportId } as Report, token),
+                expires_at: item.expires_at,
+              };
+            }
+          });
+
+          // Fallback: if function returns object map
+          if (Object.keys(tokenMap).length === 0 && linkData && typeof linkData === 'object') {
+            Object.entries(linkData as any).forEach(([reportId, token]: any) => {
+              if (typeof token === 'string' && reportId.length > 10) {
+                tokenMap[reportId] = { report_id: reportId, token, url: buildParentLink({ id: reportId } as Report, token) };
+              }
+            });
+          }
+
+          setIssuedTokens(tokenMap);
+          localStorage.setItem(`midterm_tokens_${selectedPeriod.id}`, JSON.stringify(tokenMap));
+          
+          if (Object.keys(tokenMap).length > 0) {
+            notify(`Mid-term locked and ${Object.keys(tokenMap).length} secure links generated. Copy links or send notices.`);
+          } else {
+            notify(`Mid-term locked but no links parsed. Check console. Raw response: ${JSON.stringify(linkData).slice(0,200)}`);
+          }
         }
-      } else {
-        notify('Mid-term locked. All students have reports.');
       }
 
       await refresh();
     } catch (cause) {
       console.error('Could not finalize mid-term:', cause);
-      notify('Could not finalize this mid-term.'); //  Check the database and permissions.
+      notify('Could not finalize this mid-term.');
     } finally { setBusy(false); }
   }
 
-  
+  // SEND NOTICES WITH REAL LINKS
   async function sendParentNotices() {
     if (!supabase || !isDean(role) || sendingNotices) return;
     if (!selectedPeriod || !isFinalized) { notify('Finalize the mid-term before sending notices.'); return; }
     if (periodReports.length === 0) { notify('No reports to send.'); return; }
 
-    const confirmed = window.confirm(`Send report notices to ${periodReports.length} parents for "${selectedPeriod.name}"? Each parent will receive an SMS/email with secure download link.`);
+    // Load tokens from state or localStorage
+    let tokenMap = issuedTokens;
+    if (Object.keys(tokenMap).length === 0) {
+      try {
+        const saved = localStorage.getItem(`midterm_tokens_${selectedPeriod.id}`);
+        if (saved) tokenMap = JSON.parse(saved);
+      } catch {}
+    }
+
+    // If no tokens, re-issue
+    if (Object.keys(tokenMap).length === 0) {
+      notify('No links found, re-issuing...');
+      const { data } = await supabase.functions.invoke('issue-midterm-links', { body: { report_ids: periodReports.map(r => r.id) } });
+      const linksArray: IssuedToken[] = (data as any)?.links || (Array.isArray(data) ? data : []) as any;
+      tokenMap = {};
+      linksArray.forEach((item: any) => {
+        tokenMap[item.report_id] = { report_id: item.report_id, token: item.token, url: item.url };
+      });
+      setIssuedTokens(tokenMap);
+    }
+
+    if (Object.keys(tokenMap).length === 0) {
+      notify('No secure links available. Finalize again or check edge function.');
+      return;
+    }
+
+    const confirmed = window.confirm(`Send ${periodReports.length} parent notices for "${selectedPeriod.name}" with secure links?`);
     if (!confirmed) return;
 
     setSendingNotices(true); setNoticeResult(null); setError('');
     let delivered = 0; let failed = 0;
 
     try {
-  
-      const { data: links } = await supabase.from('midterm_parent_links').select('id, report_id, token, url, student_id').in('report_id', periodReports.map(r => r.id));
-      const linkMap = new Map((links ?? []).map((l: any) => [l.report_id, l.url || `${window.location.origin}/parent-report/${l.token}`]));
-
       for (const report of periodReports) {
         const student = students.find(s => s.id === report.student_id);
         if (!student) { failed++; continue; }
-        const link = linkMap.get(report.id) || `Report ID ${report.id} - contact school`;
 
-        const smsMessage = `Dear ${student.parent_name || 'Parent'}, the mid-term report for ${student.full_name} (${student.class_name}) is ready. Average: ${report.average}%. View/download: ${link} - G.S. Gacuba 2A`;
-        const emailMessage = `Dear ${student.parent_name || 'Parent'},\n\nThe ${selectedPeriod.name} report for ${student.full_name} is ready.\n\nAverage: ${report.average}%\nSecure link: ${link}\n\nPlease contact school if you need assistance.\n\nG.S. Gacuba 2A`;
+        const tokenInfo = tokenMap[report.id];
+        if (!tokenInfo?.token) { console.error('Missing token for', report.id); failed++; continue; }
+
+        const link = tokenInfo.url || buildParentLink(report, tokenInfo.token);
+
+        const smsMessage = `Dear ${student.parent_name || 'Parent'}, mid-term report for ${student.full_name} (${student.class_name}) is ready. Average: ${report.average}%. View: ${link} - G.S. Gacuba 2A`;
+        const emailMessage = `Dear ${student.parent_name || 'Parent'},\n\nThe ${selectedPeriod.name} report for ${student.full_name} is ready.\nAverage: ${report.average}%\nSecure link: ${link}\nThis link expires on ${report.access_token_expires_at ? new Date(report.access_token_expires_at).toLocaleDateString() : 'in 30 days'}.\n\nG.S. Gacuba 2A`;
 
         try {
           if (student.phone && formatRwandaPhone(student.phone)) {
             const smsResult = await sendAfricasTalkingBulkSMS({ to: [student.phone], message: smsMessage });
-            if (smsResult.recipients?.[0]?.status === 'Success' || smsResult.recipients?.[0]?.status === 'Queued' || smsResult.recipients?.[0]?.status === 'Sent') delivered++;
-            else failed++;
+            const status = smsResult.recipients?.[0]?.status;
+            if (status === 'Success' || status === 'Queued' || status === 'Sent' || status === 'Submitted') delivered++; else failed++;
           }
           if (student.email && student.email.includes('@')) {
             const emailResult = await sendBulkEmail({ recipients: [{ email: student.email, name: student.parent_name }], subject: `Mid-term Report - ${student.full_name} - ${selectedPeriod.name}`, message: emailMessage });
             if (emailResult.totalSent > 0) delivered++;
           }
           if (!student.phone && !student.email) failed++;
-        } catch (err) {
-          console.error('Notice failed for', student.id, err);
-          failed++;
-        }
+        } catch (err) { console.error('Notice failed', err); failed++; }
       }
 
       addDispatchLog({
-        channel: 'BOTH', category: 'REPORT', title: `Mid-term Reports: ${selectedPeriod.name}`, previewMessage: smsMessagePreview(selectedPeriod.name),
+        channel: 'BOTH', category: 'REPORT', title: `Mid-term Reports: ${selectedPeriod.name}`, previewMessage: `Mid-term ${selectedPeriod.name} reports with secure links`,
         recipientCount: delivered, recipientDetails: `Delivered: ${delivered}, Failed: ${failed}`, smsStatus: `Mid-term ${selectedPeriod.name}`, emailProvider: 'Configured Email',
       });
 
@@ -270,26 +350,20 @@ export default function MidTermEngine({ role, userId, notify }: Props) {
       notify(`Notices sent: ${delivered} delivered, ${failed} failed.`);
     } catch (cause) {
       console.error('Sending parent notices failed:', cause);
-      setError('Failed to send parent notices.'); // Check SMS/email service credentials.
+      setError('Failed to send parent notices.');
       notify('Failed to send parent notices.');
     } finally { setSendingNotices(false); }
   }
 
-  function smsMessagePreview(periodName: string) { return `Mid-term ${periodName} report is ready. Check SMS/email for secure link.`; }
-
-  
   const exportReportsPDF = async () => {
     if (!selectedPeriod || periodReports.length === 0) { notify('No reports are available to export.'); return; }
     try {
-
       const pdf = new jsPDF();
       let isFirst = true;
-
-      periodReports.forEach((report, idx) => {
+      periodReports.forEach((report) => {
         if (!isFirst) pdf.addPage();
         isFirst = false;
         const rows = report.report_data?.rows ?? [];
-
         pdf.setFontSize(18); pdf.text('G.S. Gacuba 2A', 105, 18, { align: 'center' });
         pdf.setFontSize(14); pdf.text('Mid-term report card', 105, 27, { align: 'center' });
         pdf.setFontSize(10);
@@ -297,24 +371,23 @@ export default function MidTermEngine({ role, userId, notify }: Props) {
         pdf.text(`Class: ${report.class_name}`, 14, 49);
         pdf.text(`Assessment: ${selectedPeriod.name}`, 14, 56);
         pdf.text(`Official date: ${selectedPeriod.official_date}`, 14, 63);
+        const tokenInfo = issuedTokens[report.id];
+        if (tokenInfo) {
+          const link = tokenInfo.url || buildParentLink(report, tokenInfo.token);
+          pdf.setFontSize(8); pdf.text(`Secure link: ${link}`, 14, 68);
+        }
         pdf.text(`GS Gacuba II A @2026`, 14, 250);
-        pdf.text(`Developed by SYBELLA SYSTEMS LTD`, 14, 255);
-
         autoTable(pdf, {
           startY: 72, head: [['Subject', 'Mark / 100', 'Grade']],
           body: rows.map((row) => [row.subject, Number(row.mark).toFixed(1), row.grade || gradeFor(Number(row.mark))]),
           theme: 'grid', headStyles: { fillColor: [58, 40, 24] },
         });
-
         const finalY = (pdf as any).lastAutoTable?.finalY ?? 80;
         pdf.setFontSize(12); pdf.text(`Average: ${Number(report.average).toFixed(2)}%`, 14, finalY + 12);
       });
-
       pdf.save(`Midterm_${selectedPeriod.name.replace(/[^a-z0-9-_]/gi, '_')}_All_Reports.pdf`);
-      notify(`${periodReports.length} student report(s) exported as one PDF.`);
-    } catch (cause) {
-      console.error('PDF export failed:', cause); notify('Could not export the PDF reports.');
-    }
+      notify(`${periodReports.length} report(s) exported.`);
+    } catch (cause) { console.error('PDF export failed:', cause); notify('Could not export the PDF reports.'); }
   };
 
   function exportMarksExcel() {
@@ -330,18 +403,23 @@ export default function MidTermEngine({ role, userId, notify }: Props) {
         });
         const numericMarks = studentMarks.map((item) => Number(item.mark));
         row['Recorded marks'] = numericMarks.length;
-        row['Average of recorded marks'] = numericMarks.length ? Number((numericMarks.reduce((sum, mark) => sum + mark, 0) / numericMarks.length).toFixed(2)) : '';
+        row['Average'] = numericMarks.length ? Number((numericMarks.reduce((sum, m) => sum + m, 0) / numericMarks.length).toFixed(2)) : '';
         return row;
       });
-      const reportSummary = periodReports.map((report) => ({
-        Student: report.student_name, Class: report.class_name, Average: Number(report.average),
-        'Assessment period': selectedPeriod.name, 'Report generated': new Date(report.generated_at).toLocaleString(),
-      }));
+      const reportSummary = periodReports.map((report) => {
+        const tokenInfo = issuedTokens[report.id];
+        return {
+          Student: report.student_name, Class: report.class_name, Average: Number(report.average),
+          'Assessment period': selectedPeriod.name,
+          'Secure Link': tokenInfo?.url || (tokenInfo?.token ? buildParentLink(report, tokenInfo.token) : 'Not issued yet'),
+          'Expires': report.access_token_expires_at ? new Date(report.access_token_expires_at).toLocaleString() : '',
+        };
+      });
       const workbook = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(register), 'Marks register');
-      XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(reportSummary), 'Report summary');
+      XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(reportSummary), 'Report summary with Links');
       XLSX.writeFile(workbook, `Midterm_${selectedPeriod.name.replace(/[^a-z0-9-_]/gi, '_')}.xlsx`);
-      notify('Excel register exported successfully.');
+      notify('Excel exported with parent links.');
     } catch (cause) { console.error('Excel export failed:', cause); notify('Could not export the Excel register.'); }
   }
 
@@ -361,7 +439,7 @@ export default function MidTermEngine({ role, userId, notify }: Props) {
         <div>
           <p className="text-xs font-semibold uppercase tracking-wider text-amber-700">Academic reports</p>
           <h1 className="mt-1 text-2xl font-bold text-stone-900">Mid-term marks</h1>
-          <p className="mt-1 text-sm text-stone-500">Generate → Finalize (issues links) → Send notices to parents</p>
+          <p className="mt-1 text-sm text-stone-500">Generate → Finalize (issues links) → Send notices</p>
         </div>
         <button onClick={() => void refresh()} className="inline-flex items-center gap-2 rounded-lg border border-stone-300 px-3 py-2 text-sm">
           <RefreshCw size={15} /> Refresh
@@ -378,6 +456,19 @@ export default function MidTermEngine({ role, userId, notify }: Props) {
         <div className="flex items-start gap-2 rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-900">
           <CheckCircle2 size={18} className="mt-0.5 shrink-0" />
           Parent notices: {noticeResult.delivered} delivered, {noticeResult.failed} failed for {selectedPeriod?.name}
+        </div>
+      )}
+
+      {Object.keys(issuedTokens).length > 0 && (
+        <div className="rounded-xl border border-blue-200 bg-blue-50 p-4">
+          <h3 className="text-sm font-semibold text-blue-900 flex items-center gap-2"><Link2 size={14}/> {Object.keys(issuedTokens).length} secure parent links ready</h3>
+          <div className="mt-2 max-h-40 overflow-auto space-y-1">
+            {periodReports.slice(0,5).map(r => {
+              const t = issuedTokens[r.id];
+              return t ? <div key={r.id} className="text-[11px] font-mono text-blue-800 truncate">{r.student_name}: {t.url || buildParentLink(r, t.token)}</div> : null;
+            })}
+            {periodReports.length > 5 && <div className="text-[11px] text-blue-600">+{periodReports.length-5} more... see Excel export for full list</div>}
+          </div>
         </div>
       )}
 
@@ -418,7 +509,6 @@ export default function MidTermEngine({ role, userId, notify }: Props) {
             <div className="rounded-xl bg-stone-50 p-3"><strong className="block text-xl">{new Date(`${selectedPeriod.official_date}T00:00:00`).toLocaleDateString()}</strong><span className="text-xs text-stone-500">Official date</span></div>
           </div>
         )}
-        {selectedPeriod?.status === 'scheduled' && <p className="mt-4 rounded-lg bg-amber-50 p-3 text-xs text-amber-900">This period is scheduled. Its status must be opened before marks can be entered.</p>}
       </section>
 
       {selectedPeriod && (
@@ -435,7 +525,7 @@ export default function MidTermEngine({ role, userId, notify }: Props) {
                 <Download size={15} /> Export PDFs
               </button>
               <button onClick={exportMarksExcel} disabled={busy || !selectedPeriod} className="inline-flex items-center gap-2 rounded-lg border border-stone-300 bg-white px-3 py-2 text-sm font-semibold disabled:opacity-50">
-                <FileSpreadsheet size={15} /> Export Excel
+                <FileSpreadsheet size={15} /> Export Excel with Links
               </button>
             </div>
           </div>
@@ -473,27 +563,25 @@ export default function MidTermEngine({ role, userId, notify }: Props) {
               <button onClick={() => void saveMark()} disabled={busy || !selectedStudentId || !selectedSubjectId || markValue.trim() === ''} className="rounded-lg bg-[#3A2818] px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">Save mark</button>
             </div>
           )}
-          {isFinalized && <p className="mt-4 flex items-center gap-2 rounded-xl bg-stone-100 p-3 text-sm text-stone-700"><LockKeyhole size={17} />This mid-term is finalized. Marks cannot be edited from this page.</p>}
+          {isFinalized && <p className="mt-4 flex items-center gap-2 rounded-xl bg-stone-100 p-3 text-sm text-stone-700"><LockKeyhole size={17} />This mid-term is finalized. Marks cannot be edited.</p>}
         </section>
       )}
 
       {canManage(role) && selectedPeriod && !isFinalized && (
         <section className="rounded-2xl border border-amber-200 bg-amber-50 p-5">
           <h2 className="font-semibold text-amber-950">Finalize this mid-term</h2>
-          <p className="mt-1 text-sm text-amber-900">Review the generated reports before finalizing.</p>
+          <p className="mt-1 text-sm text-amber-900">This will lock marks and generate secure parent links.</p>
           <button onClick={() => void finalizePeriod()} disabled={busy || periodReports.length === 0} className="mt-4 inline-flex items-center gap-2 rounded-lg bg-amber-900 px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-50">
             <CheckCircle2 size={16} /> Finalize and issue parent links
           </button>
-          {!periodReports.length && <p className="mt-2 text-xs text-amber-900">Generate reports before finalizing this period.</p>}
         </section>
       )}
 
-     
       {canManage(role) && selectedPeriod && isFinalized && (
         <section className="rounded-2xl border border-emerald-200 bg-emerald-50 p-5">
           <h2 className="font-semibold text-emerald-950">Send report notices to parents</h2>
           <p className="mt-1 text-sm text-emerald-900">
-            Mid-term is locked. {periodReports.length} reports ready. {parentLinks.filter(l => periodReports.some(r => r.id === l.report_id)).length}Send SMS/email with download link to parents.
+            Mid-term is locked. {periodReports.length} reports, {Object.keys(issuedTokens).length} links ready. {Object.keys(issuedTokens).length === 0 && 'Click below to re-issue if you lost links.'}
           </p>
           <div className="mt-4 flex flex-wrap gap-2">
             <button onClick={() => void sendParentNotices()} disabled={sendingNotices || busy || periodReports.length === 0} className="inline-flex items-center gap-2 rounded-lg bg-emerald-700 px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-50">
@@ -502,28 +590,42 @@ export default function MidTermEngine({ role, userId, notify }: Props) {
             </button>
             <span className="inline-flex items-center gap-1.5 text-xs text-emerald-800"><Smartphone size={14}/>SMS + <Mail size={14}/>Email with link</span>
           </div>
+          {Object.keys(issuedTokens).length === 0 && (
+            <button onClick={() => void finalizePeriod()} className="mt-2 text-xs text-emerald-800 underline">Re-issue secure links</button>
+          )}
         </section>
       )}
 
       {selectedPeriod && (
         <section className="overflow-hidden rounded-2xl border border-stone-200 bg-white shadow-sm">
-          <div className="border-b border-stone-100 p-5"><h2 className="font-semibold text-stone-900">Reports and history</h2><p className="mt-1 text-xs text-stone-500">Reports are grouped by the selected mid-term.</p></div>
+          <div className="border-b border-stone-100 p-5"><h2 className="font-semibold text-stone-900">Reports and history</h2></div>
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[600px] text-left text-sm">
-              <thead className="bg-stone-50 text-xs uppercase text-stone-500"><tr><th className="px-5 py-3">Student</th><th className="px-5 py-3">Class</th><th className="px-5 py-3">Average</th><th className="px-5 py-3">Generated</th></tr></thead>
+            <table className="w-full min-w-[700px] text-left text-sm">
+              <thead className="bg-stone-50 text-xs uppercase text-stone-500"><tr><th className="px-5 py-3">Student</th><th className="px-5 py-3">Class</th><th className="px-5 py-3">Average</th><th className="px-5 py-3">Link</th><th className="px-5 py-3">Generated</th></tr></thead>
               <tbody className="divide-y divide-stone-100">
-                {periodReports.map((report) => <tr key={report.id}><td className="px-5 py-3 font-medium">{report.student_name}</td><td className="px-5 py-3">{report.class_name}</td><td className="px-5 py-3">{Number(report.average).toFixed(1)}%</td><td className="px-5 py-3 text-stone-500">{new Date(report.generated_at).toLocaleString()}</td></tr>)}
-                {!periodReports.length && <tr><td colSpan={4} className="px-5 py-8 text-center text-sm text-stone-500">No reports generated for this mid-term yet.</td></tr>}
+                {periodReports.map((report) => {
+                  const tokenInfo = issuedTokens[report.id];
+                  return (
+                    <tr key={report.id}>
+                      <td className="px-5 py-3 font-medium">{report.student_name}</td>
+                      <td className="px-5 py-3">{report.class_name}</td>
+                      <td className="px-5 py-3">{Number(report.average).toFixed(1)}%</td>
+                      <td className="px-5 py-3">
+                        {tokenInfo ? (
+                          <a href={tokenInfo.url || buildParentLink(report, tokenInfo.token)} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-[11px] text-blue-600 hover:underline"><Link2 size={12}/>View link</a>
+                        ) : (
+                          <span className="text-[11px] text-stone-400">{report.access_token_hash ? 'Hashed - re-issue needed' : 'Not issued'}</span>
+                        )}
+                      </td>
+                      <td className="px-5 py-3 text-stone-500">{new Date(report.generated_at).toLocaleString()}</td>
+                    </tr>
+                  );
+                })}
+                {!periodReports.length && <tr><td colSpan={5} className="px-5 py-8 text-center text-sm text-stone-500">No reports generated for this mid-term yet.</td></tr>}
               </tbody>
             </table>
           </div>
         </section>
-      )}
-
-      {selectedPeriod?.status === 'finalized' && (
-        <p className="flex items-center gap-2 text-sm text-stone-600">
-          <CalendarDays size={16} /> Finalized on {selectedPeriod.finalized_at ? new Date(selectedPeriod.finalized_at).toLocaleString() : 'a date not recorded'}. This record remains in history.
-        </p>
       )}
     </div>
   );

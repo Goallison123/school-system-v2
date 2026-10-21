@@ -1,6 +1,5 @@
-
 import { useState, useEffect } from 'react';
-import { Check, X, Smartphone, Mail, ShieldCheck } from 'lucide-react';
+import { Check, X } from 'lucide-react';
 import { SCHOOL_NAME } from '@/lib/constants';
 
 export default function SettingsModal({
@@ -48,7 +47,6 @@ export default function SettingsModal({
               School Administration Portal
             </p>
           </div>
-
           <button
             type="button"
             onClick={onClose}
@@ -104,24 +102,17 @@ export default function SettingsModal({
             </p>
           </div>
 
-          
-            <p className="text-[10px] text-slate-400">
-              For delivery issues, phone number problems, or messaging service
-              changes, contact the school IT administrator.
-            </p>
-          </div>
+          <p className="text-[10px] text-slate-400 border-t border-slate-100 pt-3">
+            For delivery issues, phone number problems, or messaging service
+            changes, contact the school IT administrator.
+          </p>
         </div>
 
         {/* Footer */}
         <div className="flex items-center justify-end gap-2 px-5 py-3.5 bg-slate-50 border-t border-slate-200">
-          <button
-            type="button"
-            onClick={onClose}
-            className="btn-enterprise-cancel"
-          >
+          <button type="button" onClick={onClose} className="btn-enterprise-cancel">
             Cancel
           </button>
-
           <button
             type="button"
             onClick={() => {
@@ -139,5 +130,6 @@ export default function SettingsModal({
           </button>
         </div>
       </div>
+    </div>
   );
 }
