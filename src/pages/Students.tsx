@@ -10,6 +10,9 @@ import {
   Users,
   CheckCircle2,
   Save,
+  Archive,
+  RotateCcw,
+  Trash,
 } from "lucide-react";
 import {
   autoMapStudentCsvHeaders,
@@ -35,6 +38,12 @@ type Student = {
   feeStatus: FeeStatus;
   feeAmount: string;
   lastUpdated: string;
+};
+
+type ArchivedStudent = Student & {
+  originalId: string;
+  archivedAt: string;
+  archivedReason?: string;
 };
 
 const classes = [
@@ -73,58 +82,6 @@ const initialStudents: Student[] = [
     feeAmount: "75,000 RWF",
     lastUpdated: "Oct 10, 2026",
   },
-  {
-    id: "STU-103",
-    registryCode: "STU-00103",
-    fullName: "Uwera Giramata Keza",
-    parentName: "Emmanuel Giramata",
-    email: "e.giramata@outlook.com",
-    phone: "+250 783 456 789",
-    studentClass: "S1 A",
-    stream: "General",
-    feeStatus: "Paid",
-    feeAmount: "145,000 RWF",
-    lastUpdated: "Oct 14, 2026",
-  },
-  {
-    id: "STU-104",
-    registryCode: "STU-00104",
-    fullName: "Habimana Eric",
-    parentName: "Claudine Nyiramahoro",
-    email: "habimana.eric@gmail.com",
-    phone: "+250 781 223 344",
-    studentClass: "S3 C",
-    stream: "General",
-    feeStatus: "Unpaid",
-    feeAmount: "0 RWF",
-    lastUpdated: "Sep 28, 2026",
-  },
-  {
-    id: "STU-105",
-    registryCode: "STU-00105",
-    fullName: "Mutoni Sandra",
-    parentName: "Fiston Mutoni",
-    email: "fiston.m@gmail.com",
-    phone: "+250 782 555 666",
-    studentClass: "S4 ARH",
-    stream: "Arts & Humanities",
-    feeStatus: "Paid",
-    feeAmount: "130,000 RWF",
-    lastUpdated: "Oct 05, 2026",
-  },
-  {
-    id: "STU-106",
-    registryCode: "STU-00106",
-    fullName: "Kwizera Yves",
-    parentName: "Aline Uwimbabazi",
-    email: "kwizera.yves@gmail.com",
-    phone: "+250 791 444 333",
-    studentClass: "S6 MPC",
-    stream: "Math, Physics, CompSci",
-    feeStatus: "Partial",
-    feeAmount: "90,000 RWF",
-    lastUpdated: "Oct 11, 2026",
-  },
 ];
 
 const emptyForm = {
@@ -155,6 +112,16 @@ function toStudentRecord(row: Record<string, unknown>): Student {
   };
 }
 
+function toArchivedRecord(row: Record<string, unknown>): ArchivedStudent {
+  const base = toStudentRecord(row);
+  return {
+    ...base,
+    originalId: String(row.original_id ?? row.id),
+    archivedAt: row.archived_at ? new Date(String(row.archived_at)).toLocaleString() : "Just now",
+    archivedReason: String(row.archived_reason ?? ""),
+  };
+}
+
 function toStudentPayload(student: Omit<Student, "id" | "lastUpdated">) {
   const registryCode = student.registryCode?.trim() || newRegistryCode();
   return {
@@ -169,6 +136,26 @@ function toStudentPayload(student: Omit<Student, "id" | "lastUpdated">) {
     fee_status: student.feeStatus,
     fee_amount: student.feeAmount,
     updated_at: new Date().toISOString(),
+  };
+}
+
+function toArchivePayload(student: Student, reason = "Deleted by admin") {
+  return {
+    original_id: student.id,
+    registry_code: student.registryCode,
+    registration_number: student.registryCode,
+    full_name: student.fullName,
+    parent_name: student.parentName,
+    email: student.email,
+    phone: student.phone,
+    class_name: student.studentClass,
+    stream: student.stream ?? "",
+    fee_status: student.feeStatus,
+    fee_amount: student.feeAmount,
+    archived_at: new Date().toISOString(),
+    archived_reason: reason,
+    archived_by: "admin",
+    original_data: toStudentPayload(student),
   };
 }
 
@@ -188,11 +175,13 @@ function validateParentContact(email: string, phone: string) {
 
 export default function Students() {
   const [students, setStudents] = useState<Student[]>(supabase ? [] : initialStudents);
+  const [archivedStudents, setArchivedStudents] = useState<ArchivedStudent[]>([]);
   const [studentsLoading, setStudentsLoading] = useState(Boolean(supabase));
+  const [archiveLoading, setArchiveLoading] = useState(false);
   const [search, setSearch] = useState("");
   const [classFilter, setClassFilter] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
-  const [activeSubMenu, setActiveSubMenu] = useState<"all" | "class" | "fee">("all");
+  const [activeSubMenu, setActiveSubMenu] = useState<"all" | "class" | "fee" | "archive">("all");
   const [modalStudent, setModalStudent] = useState<Student | null>(null);
   const [isAddMode, setIsAddMode] = useState(false);
   const [showImportModal, setShowImportModal] = useState(false);
@@ -205,6 +194,8 @@ export default function Students() {
   const [toast, setToast] = useState("");
   const [formError, setFormError] = useState("");
   const [sendWelcomeNotice, setSendWelcomeNotice] = useState(true);
+  const [archiveReason, setArchiveReason] = useState("");
+  const [studentToArchive, setStudentToArchive] = useState<Student | null>(null);
   const csvInputRef = useRef<HTMLInputElement>(null);
 
   const importPreview = useMemo(
@@ -233,7 +224,19 @@ export default function Students() {
       }
       setStudentsLoading(false);
     }
+    async function loadArchive() {
+      setArchiveLoading(true);
+      const { data, error } = await supabase!
+        .from("school_students_archive")
+        .select("*")
+        .order("archived_at", { ascending: false });
+      if (!error && data) {
+        setArchivedStudents((data as unknown as Record<string, unknown>[]).map(toArchivedRecord));
+      }
+      setArchiveLoading(false);
+    }
     void loadStudents();
+    void loadArchive();
     return () => { cancelled = true; };
   }, []);
 
@@ -243,7 +246,8 @@ export default function Students() {
 
   const filteredStudents = useMemo(() => {
     const query = search.trim().toLowerCase();
-    return students.filter((student) => {
+    const source = activeSubMenu === "archive" ? archivedStudents : students;
+    return source.filter((student) => {
       const matchesSearch = [
         student.fullName,
         student.parentName,
@@ -255,7 +259,7 @@ export default function Students() {
       const matchesStatus = !statusFilter || student.feeStatus === statusFilter;
       return matchesSearch && matchesClass && matchesStatus;
     });
-  }, [students, search, classFilter, statusFilter]);
+  }, [students, archivedStudents, search, classFilter, statusFilter, activeSubMenu]);
 
   function notify(message: string) {
     setToast(message);
@@ -280,17 +284,14 @@ export default function Students() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `gs-gacuba-student-registry-${new Date().toISOString().slice(0, 10)}.xls`;
+    a.download = `gs-gacuba-student-registry-${activeSubMenu === "archive" ? "archive-" : ""}${new Date().toISOString().slice(0, 10)}.xls`;
     a.click();
     URL.revokeObjectURL(url);
     notify("Student registry exported to Excel.");
   }
 
   function openAddModal() {
-    setFormData({
-      ...emptyForm,
-      registryCode: newRegistryCode(),
-    });
+    setFormData({ ...emptyForm, registryCode: newRegistryCode() });
     setFormError("");
     setIsAddMode(true);
     setModalStudent(null);
@@ -320,71 +321,31 @@ export default function Students() {
   }
 
   async function handleSaveModal() {
-    if (!formData.fullName.trim()) {
-      setFormError("Full student name is required.");
-      return;
-    }
-    if (!formData.parentName.trim()) {
-      setFormError("Parent's name is required.");
-      return;
-    }
-    if (!formData.phone.trim()) {
-      setFormError("Parent contact phone is required.");
-      return;
-    }
+    if (!formData.fullName.trim()) { setFormError("Full student name is required."); return; }
+    if (!formData.parentName.trim()) { setFormError("Parent's name is required."); return; }
+    if (!formData.phone.trim()) { setFormError("Parent contact phone is required."); return; }
     const contactErr = validateParentContact(formData.email, formData.phone);
-    if (contactErr) {
-      setFormError(contactErr);
-      return;
-    }
+    if (contactErr) { setFormError(contactErr); return; }
 
     if (isAddMode) {
       let newStudent: Student;
       const code = formData.registryCode.trim() || newRegistryCode();
       if (supabase) {
-        const { data, error: insertError } = await supabase
-          .from("school_students")
-          .insert(toStudentPayload({ ...formData, registryCode: code }))
-          .select("*")
-          .maybeSingle();
-        if (insertError || !data) {
-          console.error("Failed to add student", insertError);
-          setFormError("We couldn’t add this student. Please check the details and try again.");
-          return;
-        }
+        const { data, error: insertError } = await supabase.from("school_students").insert(toStudentPayload({ ...formData, registryCode: code })).select("*").maybeSingle();
+        if (insertError || !data) { setFormError("We couldn’t add this student. Please check the details and try again."); return; }
         newStudent = toStudentRecord(data as unknown as Record<string, unknown>);
       } else {
-        newStudent = {
-          ...formData,
-          id: `STU-${Date.now().toString().slice(-4)}`,
-          registryCode: code,
-          lastUpdated: "Just now",
-        };
+        newStudent = { ...formData, id: `STU-${Date.now().toString().slice(-4)}`, registryCode: code, lastUpdated: "Just now" };
       }
       setStudents((curr) => [newStudent, ...curr]);
-      if (sendWelcomeNotice) {
-        void triggerStudentWelcomeNotification(newStudent);
-      }
+      if (sendWelcomeNotice) void triggerStudentWelcomeNotification(newStudent);
       notify(`Student ${newStudent.fullName} registered successfully.`);
       closeModal();
     } else if (modalStudent) {
-      const updated: Student = {
-        ...modalStudent,
-        ...formData,
-        lastUpdated: "Just now",
-      };
+      const updated: Student = { ...modalStudent, ...formData, lastUpdated: "Just now" };
       if (supabase) {
-        const { data, error: updateError } = await supabase
-          .from("school_students")
-          .update(toStudentPayload(updated))
-          .eq("id", updated.id)
-          .select("*")
-          .maybeSingle();
-        if (updateError || !data) {
-          console.error("Failed to update student", updateError);
-          setFormError("We couldn’t save these changes. Please try again.");
-          return;
-        }
+        const { data, error: updateError } = await supabase.from("school_students").update(toStudentPayload(updated)).eq("id", updated.id).select("*").maybeSingle();
+        if (updateError || !data) { setFormError("We couldn’t save these changes. Please try again."); return; }
       }
       setStudents((curr) => curr.map((s) => (s.id === updated.id ? updated : s)));
       notify(`Updated ${updated.fullName} in student registry.`);
@@ -392,26 +353,81 @@ export default function Students() {
     }
   }
 
-  async function handleDelete(student: Student) {
-    if (!window.confirm(`Are you sure you want to delete ${student.fullName} from the registry?`)) return;
+  // ARCHIVE INSTEAD OF DELETE
+  function confirmArchive(student: Student) {
+    setStudentToArchive(student);
+    setArchiveReason("");
+  }
+
+  async function handleArchive() {
+    if (!studentToArchive) return;
+    const reason = archiveReason.trim() || "Deleted by admin";
+
     if (supabase) {
-      await supabase.from("school_students").delete().eq("id", student.id);
+      // 1. Save to archive subfolder table
+      const { error: archiveError } = await supabase.from("school_students_archive").insert(toArchivePayload(studentToArchive, reason));
+      if (archiveError) {
+        console.error("Archive failed", archiveError);
+        notify("Failed to archive student. Check archive table exists.");
+        return;
+      }
+      // 2. Delete from main table
+      const { error: deleteError } = await supabase.from("school_students").delete().eq("id", studentToArchive.id);
+      if (deleteError) {
+        console.error("Delete after archive failed", deleteError);
+        // rollback archive
+        await supabase.from("school_students_archive").delete().eq("original_id", studentToArchive.id);
+        notify("Failed to remove from registry.");
+        return;
+      }
     }
-    setStudents((curr) => curr.filter((s) => s.id !== student.id));
-    notify(`Removed ${student.fullName} from registry.`);
-    if (modalStudent?.id === student.id) closeModal();
+
+    // Local state update
+    const archived: ArchivedStudent = {
+      ...studentToArchive,
+      originalId: studentToArchive.id,
+      archivedAt: new Date().toLocaleString(),
+      archivedReason: reason,
+    };
+    setArchivedStudents((curr) => [archived, ...curr]);
+    setStudents((curr) => curr.filter((s) => s.id !== studentToArchive.id));
+    notify(`Moved ${studentToArchive.fullName} to Archive.`);
+    if (modalStudent?.id === studentToArchive.id) closeModal();
+    setStudentToArchive(null);
+  }
+
+  async function handleRestore(student: ArchivedStudent) {
+    if (!window.confirm(`Restore ${student.fullName} back to active registry?`)) return;
+    if (supabase) {
+      const payload = toStudentPayload({ ...student, registryCode: student.registryCode });
+      const { data, error } = await supabase.from("school_students").insert(payload).select("*").maybeSingle();
+      if (error || !data) { notify("Restore failed."); return; }
+      await supabase.from("school_students_archive").delete().eq("original_id", student.originalId).eq("registry_code", student.registryCode);
+      const restored = toStudentRecord(data as unknown as Record<string, unknown>);
+      setStudents((curr) => [restored, ...curr]);
+    } else {
+      setStudents((curr) => [...curr, { ...student, id: student.originalId, lastUpdated: "Restored" }]);
+    }
+    setArchivedStudents((curr) => curr.filter((s) => s.originalId !== student.originalId || s.registryCode !== student.registryCode));
+    notify(`Restored ${student.fullName}.`);
+  }
+
+  async function handlePermanentDelete(student: ArchivedStudent) {
+    if (!window.confirm(`Permanently delete ${student.fullName} from archive? This cannot be undone.`)) return;
+    if (supabase) {
+      await supabase.from("school_students_archive").delete().eq("original_id", student.originalId);
+    }
+    setArchivedStudents((curr) => curr.filter((s) => s.originalId !== student.originalId));
+    notify(`Permanently deleted ${student.fullName}.`);
   }
 
   async function handleCsvFileChange(event: ChangeEvent<HTMLInputElement>) {
     const file = event.currentTarget.files?.[0];
     event.currentTarget.value = "";
     if (!file) return;
-
     try {
       const parsedRows = parseStudentCsv(await file.text());
-      if (parsedRows.length < 2) {
-        throw new Error("The CSV requires a header row and at least one student record.");
-      }
+      if (parsedRows.length < 2) throw new Error("The CSV requires a header row and at least one student record.");
       const headers = parsedRows[0].values.map((h, i) => h || `Column ${i + 1}`);
       setCsvFileName(file.name);
       setCsvRows(parsedRows.slice(1));
@@ -430,40 +446,19 @@ export default function Students() {
     const importRecords = importableRows.flatMap((row) => {
       if (!row.student) return [];
       const regCode = row.student.registrationCode || newRegistryCode();
-      return [{
-        registry_code: regCode,
-        registration_number: regCode,
-        full_name: row.student.fullName,
-        stream: row.student.stream,
-        parent_name: row.student.parentName,
-        email: row.student.email,
-        phone: row.student.phone,
-        class_name: row.student.studentClass,
-        fee_status: row.student.feeStatus,
-        fee_amount: row.student.feeAmount,
-      }];
+      return [{ registry_code: regCode, registration_number: regCode, full_name: row.student.fullName, stream: row.student.stream, parent_name: row.student.parentName, email: row.student.email, phone: row.student.phone, class_name: row.student.studentClass, fee_status: row.student.feeStatus, fee_amount: row.student.feeAmount }];
     });
-
     let importedStudents: Student[] = [];
     if (supabase) {
       const { data, error: importError } = await supabase.rpc("import_school_students", { p_students: importRecords });
-      if (importError || !data) {
-        setCsvError(importError?.message ?? "Database import failed.");
-        return;
-      }
+      if (importError || !data) { setCsvError(importError?.message ?? "Database import failed."); return; }
       importedStudents = (data as unknown as Record<string, unknown>[]).map(toStudentRecord);
     } else {
       importedStudents = importableRows.flatMap((row) => {
         if (!row.student) return [];
-        return [{
-          ...row.student,
-          id: `STU-${Math.floor(1000 + Math.random() * 9000)}`,
-          registryCode: row.student.registrationCode || newRegistryCode(),
-          lastUpdated: "Just now",
-        }];
+        return [{ ...row.student, id: `STU-${Math.floor(1000 + Math.random() * 9000)}`, registryCode: row.student.registrationCode || newRegistryCode(), lastUpdated: "Just now" }];
       });
     }
-
     setStudents((curr) => [...importedStudents, ...curr]);
     setShowImportModal(false);
     notify(`Imported ${importedStudents.length} student records.`);
@@ -471,136 +466,46 @@ export default function Students() {
 
   return (
     <div className="subnav-content-layout">
-      {/* Left Sub-Navigation Menu (Screenshot 2 Style) */}
       <aside className="subnav-sidebar">
-        <div className="subnav-sidebar-header">
-          Student list
-        </div>
+        <div className="subnav-sidebar-header">Student list</div>
         <div className="subnav-links-list">
-          <button
-            type="button"
-            onClick={() => { setActiveSubMenu("all"); setClassFilter(""); setStatusFilter(""); }}
-            className={`subnav-link-btn ${activeSubMenu === "all" ? "active" : ""}`}
-          >
-            <ArrowRight size={14} className="mr-2 text-[#ea580c]" aria-hidden="true" /> Find a student
+          <button type="button" onClick={() => { setActiveSubMenu("all"); setClassFilter(""); setStatusFilter(""); }} className={`subnav-link-btn ${activeSubMenu === "all" ? "active" : ""}`}>
+            <ArrowRight size={14} className="mr-2 text-[#ea580c]" /> Find a student
           </button>
-          <button
-            type="button"
-            onClick={openAddModal}
-            className="subnav-link-btn"
-          >
-            <ArrowRight size={14} className="mr-2 text-[#ea580c]" aria-hidden="true" /> Add a student
-          </button>
-          <button
-            type="button"
-            onClick={() => setActiveSubMenu("class")}
-            className={`subnav-link-btn ${activeSubMenu === "class" ? "active" : ""}`}
-          >
-            <ArrowRight size={14} className="mr-2 text-[#ea580c]" aria-hidden="true" /> Find a class
-          </button>
-          <button
-            type="button"
-            onClick={() => setActiveSubMenu("fee")}
-            className={`subnav-link-btn ${activeSubMenu === "fee" ? "active" : ""}`}
-          >
-            <ArrowRight size={14} className="mr-2 text-[#ea580c]" aria-hidden="true" /> Check fee status
-          </button>
-          <button
-            type="button"
-            onClick={() => csvInputRef.current?.click()}
-            className="subnav-link-btn"
-          >
-            <ArrowRight size={14} className="mr-2 text-[#ea580c]" aria-hidden="true" /> Import a student list
-          </button>
+          <button type="button" onClick={openAddModal} className="subnav-link-btn"><ArrowRight size={14} className="mr-2 text-[#ea580c]" /> Add a student</button>
+          <button type="button" onClick={() => setActiveSubMenu("class")} className={`subnav-link-btn ${activeSubMenu === "class" ? "active" : ""}`}><ArrowRight size={14} className="mr-2 text-[#ea580c]" /> Find a class</button>
+          <button type="button" onClick={() => setActiveSubMenu("fee")} className={`subnav-link-btn ${activeSubMenu === "fee" ? "active" : ""}`}><ArrowRight size={14} className="mr-2 text-[#ea580c]" /> Check fee status</button>
+          <button type="button" onClick={() => csvInputRef.current?.click()} className="subnav-link-btn"><ArrowRight size={14} className="mr-2 text-[#ea580c]" /> Import a student list</button>
+          <button type="button" onClick={() => setActiveSubMenu("archive")} className={`subnav-link-btn ${activeSubMenu === "archive" ? "active bg-amber-50" : ""}`}><Archive size={14} className="mr-2 text-amber-600" /> Archive ({archivedStudents.length})</button>
         </div>
-
-        {/* Quick Stream Filter Sidebar Panel */}
         {activeSubMenu === "class" && (
           <div className="border-t border-slate-200 p-2 space-y-1">
             <span className="text-[10px] uppercase font-bold text-slate-500 px-2 block">Quick Stream Select</span>
             {availableClasses.slice(0, 8).map((c) => (
-              <button
-                key={c}
-                type="button"
-                onClick={() => setClassFilter(c)}
-                className={`w-full text-left px-2 py-1 text-xs rounded ${classFilter === c ? 'bg-emerald-100 text-emerald-900 font-bold' : 'text-slate-600 hover:bg-slate-100'}`}
-              >
-                {c}
-              </button>
+              <button key={c} type="button" onClick={() => setClassFilter(c)} className={`w-full text-left px-2 py-1 text-xs rounded ${classFilter === c ? 'bg-emerald-100 text-emerald-900 font-bold' : 'text-slate-600 hover:bg-slate-100'}`}>{c}</button>
             ))}
           </div>
         )}
       </aside>
 
-      {/* Main Administrative Workspace */}
       <main className="data-workspace">
-        {/* Workspace Title & Toolbar Bar (Screenshot 2) */}
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 pb-3 border-b border-slate-200 mb-4">
           <div>
-            <h2 className="text-sm font-bold text-slate-900 uppercase tracking-wide">
-              Student list
-            </h2>
-            <p className="text-[11px] text-slate-500 mt-0.5">
-              Update student details, classes, fees, and family contacts.
-            </p>
+            <h2 className="text-sm font-bold text-slate-900 uppercase tracking-wide">{activeSubMenu === "archive" ? "Archived Students" : "Student list"}</h2>
+            <p className="text-[11px] text-slate-500 mt-0.5">{activeSubMenu === "archive" ? "Deleted students saved in archive subfolder. You can restore or permanently delete." : "Update student details, classes, fees, and family contacts."}</p>
           </div>
           <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={exportToExcel}
-              className="btn-enterprise-excel"
-            >
-              <FileSpreadsheet size={14} /> Export list
-            </button>
-            <button
-              type="button"
-              onClick={openAddModal}
-              className="btn-enterprise-register"
-            >
-              <Plus size={14} /> Add student
-            </button>
+            <button type="button" onClick={exportToExcel} className="btn-enterprise-excel"><FileSpreadsheet size={14} /> Export {activeSubMenu === "archive" ? "archive" : "list"}</button>
+            {activeSubMenu !== "archive" && <button type="button" onClick={openAddModal} className="btn-enterprise-register"><Plus size={14} /> Add student</button>}
           </div>
         </div>
 
-        {/* Filter Strip */}
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 bg-slate-50 p-3 rounded border border-slate-200 mb-4">
-          <div className="relative">
-            <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
-            <input
-              type="text"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search code, student, parent..."
-              className="form-input w-full pl-8"
-            />
-          </div>
-          <div>
-            <select
-              value={classFilter}
-              onChange={(e) => setClassFilter(e.target.value)}
-              className="form-select w-full"
-            >
-              <option value="">-- All Class Streams --</option>
-              {availableClasses.map((c) => (
-                <option key={c} value={c}>{c}</option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <select
-              value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value)}
-              className="form-select w-full"
-            >
-              <option value="">-- All Fee Statuses --</option>
-              <option value="Paid">Fully Paid</option>
-              <option value="Partial">Partial Payment</option>
-              <option value="Unpaid">Unpaid</option>
-            </select>
-          </div>
+          <div className="relative"><Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" /><input type="text" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search code, student, parent..." className="form-input w-full pl-8" /></div>
+          <div><select value={classFilter} onChange={(e) => setClassFilter(e.target.value)} className="form-select w-full"><option value="">-- All Class Streams --</option>{availableClasses.map((c) => (<option key={c} value={c}>{c}</option>))}</select></div>
+          <div><select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className="form-select w-full"><option value="">-- All Fee Statuses --</option><option value="Paid">Fully Paid</option><option value="Partial">Partial Payment</option><option value="Unpaid">Unpaid</option></select></div>
         </div>
 
-        {/* High-Density Tabular Data Grid */}
         <div className="system-table-wrap">
           <table className="system-table">
             <thead>
@@ -610,360 +515,102 @@ export default function Students() {
                 <th>Class / Stream</th>
                 <th>Parent / Guardian</th>
                 <th>Contact Phone</th>
-                <th style={{ width: '130px' }}>Fee Status</th>
+                <th style={{ width: '130px' }}>{activeSubMenu === "archive" ? "Archived" : "Fee Status"}</th>
                 <th style={{ width: '90px', textAlign: 'center' }}>Actions</th>
               </tr>
             </thead>
             <tbody>
               {filteredStudents.length > 0 ? (
                 filteredStudents.map((student) => (
-                  <tr key={student.id} className="cursor-pointer" onClick={() => openEdit(student)}>
-                    <td className="font-mono text-emerald-800 font-semibold">
-                      {student.registryCode ?? student.id}
-                    </td>
-                    <td>
-                      <span className="font-semibold text-slate-900 block">{student.fullName}</span>
-                      <span className="text-[11px] text-slate-500">{student.stream ?? 'General'}</span>
-                    </td>
-                    <td>
-                      <span className="font-medium">{student.studentClass}</span>
-                    </td>
+                  <tr key={`${student.id}-${(student as ArchivedStudent).archivedAt ?? ""}`} className="cursor-pointer" onClick={() => activeSubMenu !== "archive" && openEdit(student as Student)}>
+                    <td className="font-mono text-emerald-800 font-semibold">{student.registryCode ?? student.id}</td>
+                    <td><span className="font-semibold text-slate-900 block">{student.fullName}</span><span className="text-[11px] text-slate-500">{student.stream ?? 'General'}</span>{activeSubMenu === "archive" && <span className="text-[10px] text-amber-600 block">{(student as ArchivedStudent).archivedReason}</span>}</td>
+                    <td><span className="font-medium">{student.studentClass}</span></td>
                     <td>{student.parentName}</td>
+                    <td><span className="font-mono text-[11px] block">{student.phone}</span>{student.email && <span className="text-[10px] text-slate-400 block">{student.email}</span>}</td>
                     <td>
-                      <span className="font-mono text-[11px] block">{student.phone}</span>
-                      {student.email && <span className="text-[10px] text-slate-400 block">{student.email}</span>}
-                    </td>
-                    <td>
-                      <span className={`status-pill ${
-                        student.feeStatus === 'Paid' ? 'status-pill-paid' :
-                        student.feeStatus === 'Partial' ? 'status-pill-partial' : 'status-pill-unpaid'
-                      }`}>
-                        {student.feeStatus}
-                      </span>
-                      <span className="text-[10px] text-slate-500 block mt-0.5 font-mono">{student.feeAmount}</span>
+                      {activeSubMenu === "archive" ? <span className="text-[11px] font-mono text-slate-600">{(student as ArchivedStudent).archivedAt}</span> : <>
+                        <span className={`status-pill ${student.feeStatus === 'Paid' ? 'status-pill-paid' : student.feeStatus === 'Partial' ? 'status-pill-partial' : 'status-pill-unpaid'}`}>{student.feeStatus}</span>
+                        <span className="text-[10px] text-slate-500 block mt-0.5 font-mono">{student.feeAmount}</span>
+                      </>}
                     </td>
                     <td>
                       <div className="flex items-center justify-center gap-1" onClick={(e) => e.stopPropagation()}>
-                        <button
-                          type="button"
-                          onClick={() => openEdit(student)}
-                          className="p-1 text-slate-500 hover:text-emerald-700 rounded"
-                          title="Edit student"
-                        >
-                          <Pencil size={13} />
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => handleDelete(student)}
-                          className="p-1 text-slate-400 hover:text-red-600 rounded"
-                          title="Delete student"
-                        >
-                          <Trash2 size={13} />
-                        </button>
+                        {activeSubMenu === "archive" ? <>
+                          <button type="button" onClick={() => handleRestore(student as ArchivedStudent)} className="p-1 text-emerald-600 hover:text-emerald-700 rounded" title="Restore"><RotateCcw size={13} /></button>
+                          <button type="button" onClick={() => handlePermanentDelete(student as ArchivedStudent)} className="p-1 text-slate-400 hover:text-red-600 rounded" title="Permanent delete"><Trash size={13} /></button>
+                        </> : <>
+                          <button type="button" onClick={() => openEdit(student as Student)} className="p-1 text-slate-500 hover:text-emerald-700 rounded" title="Edit student"><Pencil size={13} /></button>
+                          <button type="button" onClick={() => confirmArchive(student as Student)} className="p-1 text-slate-400 hover:text-amber-600 rounded" title="Archive student"><Archive size={13} /></button>
+                        </>}
                       </div>
                     </td>
                   </tr>
                 ))
               ) : (
-                <tr>
-                  <td colSpan={7} className="text-center py-8 text-slate-500">
-                    <Users size={24} className="mx-auto mb-2 text-slate-400" />
-                    No registered students found matching your search.
-                  </td>
-                </tr>
+                <tr><td colSpan={7} className="text-center py-8 text-slate-500"><Users size={24} className="mx-auto mb-2 text-slate-400" />{activeSubMenu === "archive" ? "Archive is empty." : "No registered students found matching your search."}{archiveLoading && <span className="text-[10px] block mt-1">Syncing archive...</span>}</td></tr>
               )}
             </tbody>
           </table>
         </div>
 
-        {/* Table Footer */}
         <div className="flex items-center justify-between text-xs text-slate-500 mt-3 pt-2 border-t border-slate-100">
           <span>Total Records: <strong className="font-mono font-bold text-slate-800">{filteredStudents.length}</strong> {studentsLoading && <span className="text-[10px] text-slate-400 font-mono">(Syncing...)</span>}</span>
-          <span className="text-[11px]">Click any record to inspect or modify pupil details</span>
+          <span className="text-[11px]">{activeSubMenu === "archive" ? "Archive subfolder: school_students_archive" : "Click any record to inspect or modify pupil details"}</span>
         </div>
       </main>
 
-      <input
-        ref={csvInputRef}
-        type="file"
-        accept=".csv,text/csv"
-        className="hidden"
-        onChange={handleCsvFileChange}
-      />
+      <input ref={csvInputRef} type="file" accept=".csv,text/csv" className="hidden" onChange={handleCsvFileChange} />
 
-      {/* School Student Registration Modal */}
       {(isAddMode || modalStudent) && (
         <div className="modal-overlay" onClick={closeModal}>
           <div className="modal-dialog-box" onClick={(e) => e.stopPropagation()}>
-            {/* Modal Header Bar */}
-            <div className="modal-header-bar">
-              <h2>{isAddMode ? "Register new student" : "Edit student record"}</h2>
-              <button type="button" onClick={closeModal} className="modal-close-btn">
-                <X size={16} />
-              </button>
-            </div>
-
-            {/* Section 1: Student Information */}
-            <div className="modal-section-marker">
-              Student Information
-            </div>
-
+            <div className="modal-header-bar"><h2>{isAddMode ? "Register new student" : "Edit student record"}</h2><button type="button" onClick={closeModal} className="modal-close-btn"><X size={16} /></button></div>
+            <div className="modal-section-marker">Student Information</div>
             <div className="modal-form-grid">
-              {/* Index / Registration Code */}
-              <div className="form-row">
-                <label className="form-label">
-                  <span className="req">*</span> Student index code
-                </label>
-                <div className="form-input-with-button">
-                  <input
-                    type="text"
-                    value={formData.registryCode}
-                    onChange={(e) => setFormData({ ...formData, registryCode: e.target.value })}
-                    placeholder="e.g. STU-10293"
-                    className="form-input"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setFormData({ ...formData, registryCode: newRegistryCode() })}
-                    className="form-field-action-btn"
-                    title="Generate code"
-                  >
-                    <Search size={14} />
-                  </button>
-                </div>
-              </div>
-
-              {/* Student Full Name */}
-              <div className="form-row">
-                <label className="form-label">
-                  <span className="req">*</span> Student full name
-                </label>
-                <input
-                  type="text"
-                  value={formData.fullName}
-                  onChange={(e) => setFormData({ ...formData, fullName: e.target.value })}
-                  placeholder="e.g. Mugisha Jean Claude"
-                  className="form-input"
-                />
-              </div>
-
-              {/* Academic Stream / Track */}
-              <div className="form-row">
-                <label className="form-label">
-                  Academic track / combination
-                </label>
-                <input
-                  type="text"
-                  value={formData.stream}
-                  onChange={(e) => setFormData({ ...formData, stream: e.target.value })}
-                  placeholder="e.g. General, Science (MPC), Arts (HGL)"
-                  className="form-input"
-                />
-              </div>
-
-              {/* 2-Column: Class Stream & Fee Status */}
-              <div className="form-group-2col">
-                <div className="form-row">
-                  <label className="form-label">
-                    <span className="req">*</span> Class stream
-                  </label>
-                  <select
-                    value={formData.studentClass}
-                    onChange={(e) => setFormData({ ...formData, studentClass: e.target.value })}
-                    className="form-select"
-                  >
-                    <option value="">--Select class--</option>
-                    {availableClasses.map((c) => (
-                      <option key={c} value={c}>{c}</option>
-                    ))}
-                  </select>
-                </div>
-
-                <div className="form-row">
-                  <label className="form-label">
-                    <span className="req">*</span> Tuition fee status
-                  </label>
-                  <select
-                    value={formData.feeStatus}
-                    onChange={(e) => setFormData({ ...formData, feeStatus: e.target.value as FeeStatus })}
-                    className="form-select"
-                  >
-                    <option value="Paid">Fully paid</option>
-                    <option value="Partial">Partial payment</option>
-                    <option value="Unpaid">Unpaid</option>
-                  </select>
-                </div>
-              </div>
-
-              {/* Section 2: Parent / Guardian Information */}
-              <div className="text-xs font-bold text-[#ea580c] pt-2 border-t border-slate-100">
-                Parent & Fee Information
-              </div>
-
-              {/* 2-Column: Parent Name & Phone */}
-              <div className="form-group-2col">
-                <div className="form-row">
-                  <label className="form-label">
-                    <span className="req">*</span> Parent or guardian name
-                  </label>
-                  <input
-                    type="text"
-                    value={formData.parentName}
-                    onChange={(e) => setFormData({ ...formData, parentName: e.target.value })}
-                    placeholder="e.g. Jean Bosco Mugisha"
-                    className="form-input"
-                  />
-                </div>
-
-                <div className="form-row">
-                  <label className="form-label">
-                    <span className="req">*</span> Parent phone number
-                  </label>
-                  <input
-                    type="text"
-                    value={formData.phone}
-                    onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-                    placeholder="+250 788 000 000"
-                    className="form-input"
-                  />
-                </div>
-              </div>
-
-              {/* 2-Column: Parent Email & Fee Amount */}
-              <div className="form-group-2col">
-                <div className="form-row">
-                  <label className="form-label">
-                    Parent email address
-                  </label>
-                  <input
-                    type="email"
-                    value={formData.email}
-                    onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                    placeholder="parent@example.com"
-                    className="form-input"
-                  />
-                </div>
-
-                <div className="form-row">
-                  <label className="form-label">
-                    Term tuition amount
-                  </label>
-                  <input
-                    type="text"
-                    value={formData.feeAmount}
-                    onChange={(e) => setFormData({ ...formData, feeAmount: e.target.value })}
-                    placeholder="145,000 RWF"
-                    className="form-input"
-                  />
-                </div>
-              </div>
-
-              {isAddMode && (
-                <div className="pt-2 border-t border-slate-100 flex items-center gap-2">
-                  <input
-                    type="checkbox"
-                    id="autoWelcomeCheckbox"
-                    checked={sendWelcomeNotice}
-                    onChange={(e) => setSendWelcomeNotice(e.target.checked)}
-                    className="accent-[#ea580c] h-4 w-4"
-                  />
-                  <label htmlFor="autoWelcomeCheckbox" className="text-xs text-slate-700 cursor-pointer font-medium">
-                    Send welcome message to parent via SMS and email
-                  </label>
-                </div>
-              )}
-
-              {formError && (
-                <p className="text-xs text-red-600 font-semibold mt-1">
-                  {formError}
-                </p>
-              )}
+              <div className="form-row"><label className="form-label"><span className="req">*</span> Student index code</label><div className="form-input-with-button"><input type="text" value={formData.registryCode} onChange={(e) => setFormData({ ...formData, registryCode: e.target.value })} placeholder="e.g. STU-10293" className="form-input" /><button type="button" onClick={() => setFormData({ ...formData, registryCode: newRegistryCode() })} className="form-field-action-btn"><Search size={14} /></button></div></div>
+              <div className="form-row"><label className="form-label"><span className="req">*</span> Student full name</label><input type="text" value={formData.fullName} onChange={(e) => setFormData({ ...formData, fullName: e.target.value })} placeholder="e.g. Mugisha Jean Claude" className="form-input" /></div>
+              <div className="form-row"><label className="form-label">Academic track / combination</label><input type="text" value={formData.stream} onChange={(e) => setFormData({ ...formData, stream: e.target.value })} placeholder="e.g. General, Science (MPC), Arts (HGL)" className="form-input" /></div>
+              <div className="form-group-2col"><div className="form-row"><label className="form-label"><span className="req">*</span> Class stream</label><select value={formData.studentClass} onChange={(e) => setFormData({ ...formData, studentClass: e.target.value })} className="form-select"><option value="">--Select class--</option>{availableClasses.map((c) => (<option key={c} value={c}>{c}</option>))}</select></div><div className="form-row"><label className="form-label"><span className="req">*</span> Tuition fee status</label><select value={formData.feeStatus} onChange={(e) => setFormData({ ...formData, feeStatus: e.target.value as FeeStatus })} className="form-select"><option value="Paid">Fully paid</option><option value="Partial">Partial payment</option><option value="Unpaid">Unpaid</option></select></div></div>
+              <div className="text-xs font-bold text-[#ea580c] pt-2 border-t border-slate-100">Parent & Fee Information</div>
+              <div className="form-group-2col"><div className="form-row"><label className="form-label"><span className="req">*</span> Parent or guardian name</label><input type="text" value={formData.parentName} onChange={(e) => setFormData({ ...formData, parentName: e.target.value })} placeholder="e.g. Jean Bosco Mugisha" className="form-input" /></div><div className="form-row"><label className="form-label"><span className="req">*</span> Parent phone number</label><input type="text" value={formData.phone} onChange={(e) => setFormData({ ...formData, phone: e.target.value })} placeholder="+250 788 000 000" className="form-input" /></div></div>
+              <div className="form-group-2col"><div className="form-row"><label className="form-label">Parent email address</label><input type="email" value={formData.email} onChange={(e) => setFormData({ ...formData, email: e.target.value })} placeholder="parent@example.com" className="form-input" /></div><div className="form-row"><label className="form-label">Term tuition amount</label><input type="text" value={formData.feeAmount} onChange={(e) => setFormData({ ...formData, feeAmount: e.target.value })} placeholder="145,000 RWF" className="form-input" /></div></div>
+              {isAddMode && (<div className="pt-2 border-t border-slate-100 flex items-center gap-2"><input type="checkbox" id="autoWelcomeCheckbox" checked={sendWelcomeNotice} onChange={(e) => setSendWelcomeNotice(e.target.checked)} className="accent-[#ea580c] h-4 w-4" /><label htmlFor="autoWelcomeCheckbox" className="text-xs text-slate-700 cursor-pointer font-medium">Send welcome message to parent via SMS and email</label></div>)}
+              {formError && (<p className="text-xs text-red-600 font-semibold mt-1">{formError}</p>)}
             </div>
-
-            {/* Modal Footer Bar */}
-            <div className="modal-footer-bar">
-              <button
-                type="button"
-                onClick={closeModal}
-                className="btn-enterprise-cancel"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                onClick={handleSaveModal}
-                className="btn-enterprise-save"
-              >
-                <Save size={14} /> {isAddMode ? "Save student" : "Save changes"}
-              </button>
-            </div>
+            <div className="modal-footer-bar"><button type="button" onClick={closeModal} className="btn-enterprise-cancel">Cancel</button><button type="button" onClick={handleSaveModal} className="btn-enterprise-save"><Save size={14} /> {isAddMode ? "Save student" : "Save changes"}</button></div>
           </div>
         </div>
       )}
 
-      {/* CSV Import Modal */}
+      {studentToArchive && (
+        <div className="modal-overlay" onClick={() => setStudentToArchive(null)}>
+          <div className="modal-dialog-box" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header-bar"><h2>Archive Student</h2><button type="button" onClick={() => setStudentToArchive(null)} className="modal-close-btn"><X size={16} /></button></div>
+            <div className="p-4 space-y-3">
+              <p className="text-sm text-slate-700">You are about to move <strong>{studentToArchive.fullName}</strong> ({studentToArchive.registryCode}) to the archive subfolder.</p>
+              <p className="text-[11px] text-slate-500">The record will be saved in <code className="bg-slate-100 px-1 rounded">school_students_archive</code> and removed from active list. You can restore it later.</p>
+              <div className="form-row"><label className="form-label">Reason for archiving (optional)</label><input type="text" value={archiveReason} onChange={(e) => setArchiveReason(e.target.value)} placeholder="e.g. Graduated, Transferred, Duplicate record" className="form-input" /></div>
+            </div>
+            <div className="modal-footer-bar"><button type="button" onClick={() => setStudentToArchive(null)} className="btn-enterprise-cancel">Cancel</button><button type="button" onClick={handleArchive} className="bg-amber-600 hover:bg-amber-700 text-white px-4 py-2 rounded text-xs font-bold flex items-center gap-2"><Archive size={14} /> Move to Archive</button></div>
+          </div>
+        </div>
+      )}
+
       {showImportModal && (
         <div className="modal-overlay" onClick={() => setShowImportModal(false)}>
           <div className="modal-dialog-box max-w-2xl" onClick={(e) => e.stopPropagation()}>
-            <div className="modal-header-bar">
-              <h2>Import Student List</h2>
-              <button type="button" onClick={() => setShowImportModal(false)} className="modal-close-btn">
-                <X size={16} />
-              </button>
-            </div>
+            <div className="modal-header-bar"><h2>Import Student List</h2><button type="button" onClick={() => setShowImportModal(false)} className="modal-close-btn"><X size={16} /></button></div>
             <div className="p-4 space-y-4">
-              <p className="text-xs text-slate-600">
-                File: <strong className="text-slate-900">{csvFileName}</strong> ({csvRows.length} rows loaded)
-              </p>
-              {csvError ? (
-                <div className="bg-red-50 text-red-700 p-3 rounded text-xs">
-                  {csvError}
-                </div>
-              ) : (
-                <div className="space-y-3">
-                  <p className="text-xs text-slate-500">
-                    Preview: Ready to import <strong className="text-emerald-700">{importableRows.length}</strong> students.
-                    ({duplicateRows.length} duplicates and {invalidRows.length} invalid rows will be skipped).
-                  </p>
-                  <label className="flex items-center gap-2 text-xs text-slate-700">
-                    <input
-                      type="checkbox"
-                      checked={reviewConfirmed}
-                      onChange={(e) => setReviewConfirmed(e.target.checked)}
-                      className="accent-[#ea580c]"
-                    />
-                    I have checked this student list and confirm importing into school records.
-                  </label>
-                </div>
-              )}
+              <p className="text-xs text-slate-600">File: <strong className="text-slate-900">{csvFileName}</strong> ({csvRows.length} rows loaded)</p>
+              {csvError ? (<div className="bg-red-50 text-red-700 p-3 rounded text-xs">{csvError}</div>) : (<div className="space-y-3"><p className="text-xs text-slate-500">Preview: Ready to import <strong className="text-emerald-700">{importableRows.length}</strong> students. ({duplicateRows.length} duplicates and {invalidRows.length} invalid rows will be skipped).</p><label className="flex items-center gap-2 text-xs text-slate-700"><input type="checkbox" checked={reviewConfirmed} onChange={(e) => setReviewConfirmed(e.target.checked)} className="accent-[#ea580c]" />I have checked this student list and confirm importing into school records.</label></div>)}
             </div>
-            <div className="modal-footer-bar">
-              <button
-                type="button"
-                onClick={() => setShowImportModal(false)}
-                className="btn-enterprise-cancel"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                disabled={!reviewConfirmed || importableRows.length === 0}
-                onClick={importCsvStudents}
-                className="btn-enterprise-register"
-              >
-                Import students
-              </button>
-            </div>
+            <div className="modal-footer-bar"><button type="button" onClick={() => setShowImportModal(false)} className="btn-enterprise-cancel">Cancel</button><button type="button" disabled={!reviewConfirmed || importableRows.length === 0} onClick={importCsvStudents} className="btn-enterprise-register">Import students</button></div>
           </div>
         </div>
       )}
 
-      {toast && (
-        <div className="system-toast">
-          <CheckCircle2 size={16} className="text-emerald-400" />
-          <span>{toast}</span>
-        </div>
-      )}
+      {toast && (<div className="system-toast"><CheckCircle2 size={16} className="text-emerald-400" /><span>{toast}</span></div>)}
     </div>
   );
 }

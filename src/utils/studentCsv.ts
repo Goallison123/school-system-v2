@@ -53,17 +53,21 @@ const csvFields: StudentCsvField[] = [
 ];
 
 const headerAliases: Record<StudentCsvField, string[]> = {
-  firstName: ["firstname", "studentfirstname", "givenname", "forename"],
-  lastName: ["lastname", "studentlastname", "familyname", "surname"],
-  fullName: ["fullname", "studentname", "learnername", "pupilname", "name"],
-  registrationCode: ["registrationnumber", "registrationno", "regnumber", "regno", "registrationcode", "studentid"],
-  parentName: ["parentname", "guardianname", "guardian", "parentguardian", "contactname"],
-  email: ["email", "parentemail", "guardianemail", "contactemail", "emailaddress"],
-  phone: ["phone", "telephone", "mobile", "parentphone", "guardianphone", "contactphone"],
-  studentClass: ["class", "classname", "studentclass", "grade", "level"],
-  stream: ["stream", "studentstream", "section"],
-  feeStatus: ["feestatus", "feesstatus", "paymentstatus", "payment", "feespaidstatus"],
-  feeAmount: ["feeamount", "feesamount", "amountpaid", "paidamount", "feespaid", "amount"],
+  firstName: ["firstname", "studentfirstname", "givenname", "forename", "first name"],
+  lastName: ["lastname", "studentlastname", "familyname", "surname", "last name"],
+  fullName: ["fullname", "studentname", "learnername", "pupilname", "name", "full name", "student full name", "studentnamefull"],
+  registrationCode: [
+    "registrationnumber", "registrationno", "regnumber", "regno", "registrationcode", 
+    "studentid", "registrycode", "registry code", "reg code", "student code", "student index", 
+    "index code", "registration number", "registry_code", "registration_code", "regcode", "id", "code"
+  ],
+  parentName: ["parentname", "guardianname", "guardian", "parentguardian", "contactname", "parent name", "guardian name", "parent guardian"],
+  email: ["email", "parentemail", "guardianemail", "contactemail", "emailaddress", "parent email", "e-mail"],
+  phone: ["phone", "telephone", "mobile", "parentphone", "guardianphone", "contactphone", "parent phone", "contact phone", "phone number"],
+  studentClass: ["class", "classname", "studentclass", "grade", "level", "class name"],
+  stream: ["stream", "studentstream", "section", "academic track", "track"],
+  feeStatus: ["feestatus", "feesstatus", "paymentstatus", "payment", "feespaidstatus", "fee status", "fees status"],
+  feeAmount: ["feeamount", "feesamount", "amountpaid", "paidamount", "feespaid", "amount", "fee amount", "fees amount"],
 };
 
 const fieldLabels: Record<StudentCsvField, string> = {
@@ -162,7 +166,7 @@ export function autoMapStudentCsvHeaders(headers: string[]): StudentCsvMapping {
   const usedColumns = new Set<string>();
 
   for (const field of csvFields) {
-    const aliases = headerAliases[field];
+    const aliases = headerAliases[field].map(normalizeHeader);
     const index = headers.findIndex((header, columnIndex) =>
       !usedColumns.has(String(columnIndex)) && aliases.includes(normalizeHeader(header)),
     );
@@ -186,38 +190,41 @@ function normalizeFeeStatus(value: string): StudentImportRecord["feeStatus"] | n
   if (!status) return "Unpaid";
   if (["paid", "full", "fully paid", "complete", "completed"].includes(status)) return "Paid";
   if (["partial", "partially paid", "part paid", "in progress"].includes(status)) return "Partial";
-  if (["unpaid", "not paid", "outstanding", "pending", "none"].includes(status)) return "Unpaid";
+  if (["unpaid", "not paid", "outstanding", "pending", "none", "0", "0 rwf"].includes(status)) return "Unpaid";
   return null;
 }
 
 function normalizeName(firstName: string, lastName: string, fullName: string) {
+  if (fullName && fullName.trim().length >= 2) {
+    return fullName.trim().replace(/\s+/g, " ");
+  }
   let first = firstName.trim();
   let last = lastName.trim();
-
-  if ((!first || !last) && fullName) {
-    const parts = fullName.trim().split(/\s+/).filter(Boolean);
-    if (parts.length >= 2) {
-      first = parts[0];
-      last = parts.slice(1).join(" ");
-    }
-  }
-
   if (!first || !last) return null;
-  return `${first.toLocaleUpperCase()} ${last.toLocaleLowerCase()}`;
+  return `${first} ${last}`.replace(/\s+/g, " ").trim();
 }
 
 function identityKey(fullName: string, studentClass: string) {
   return `${fullName.normalize("NFKC").trim().replace(/\s+/g, " ").toLocaleLowerCase()}|${studentClass.normalize("NFKC").trim().replace(/\s+/g, " ").toLocaleLowerCase()}`;
 }
 
+function registryKey(code: string) {
+  return code.normalize("NFKC").trim().toUpperCase();
+}
+
 export function previewStudentCsvRows(
   rows: ParsedCsvRow[],
   mapping: StudentCsvMapping,
-  existingStudents: Array<Pick<StudentImportRecord, "fullName" | "studentClass">>,
+  existingStudents: Array<Pick<StudentImportRecord, "fullName" | "studentClass" | "registrationCode">>,
 ): StudentCsvPreview[] {
-  const seen = new Map<string, string>();
+  const seenIdentity = new Map<string, string>();
+  const seenRegistryCode = new Map<string, string>();
+
   for (const student of existingStudents) {
-    seen.set(identityKey(student.fullName, student.studentClass), "already in registry");
+    seenIdentity.set(identityKey(student.fullName, student.studentClass), "already in registry");
+    if (student.registrationCode) {
+      seenRegistryCode.set(registryKey(student.registrationCode), "already in registry");
+    }
   }
 
   return rows.map(({ lineNumber, values }) => {
@@ -226,21 +233,20 @@ export function previewStudentCsvRows(
     const fullName = selectedValue(values, mapping, "fullName");
     const normalizedName = normalizeName(firstName, lastName, fullName);
     const studentClass = selectedValue(values, mapping, "studentClass").replace(/\s+/g, " ");
-    const stream = selectedValue(values, mapping, "stream");
+    const stream = selectedValue(values, mapping, "stream") || "General";
     const email = selectedValue(values, mapping, "email");
     const parentName = selectedValue(values, mapping, "parentName");
     const phone = selectedValue(values, mapping, "phone");
     const rawFeeStatus = selectedValue(values, mapping, "feeStatus");
     const feeStatus = normalizeFeeStatus(rawFeeStatus);
+    const registrationCode = selectedValue(values, mapping, "registrationCode");
     const errors: string[] = [];
 
-    if (!normalizedName) errors.push("Provide both first and last name, or a full name containing both.");
+    if (!normalizedName) errors.push("Provide first + last name, or Full Name.");
     if (!studentClass) errors.push("Class is required.");
-    if (!stream) errors.push("Student stream is required.");
     if (!parentName) errors.push("Parent or guardian name is required.");
-    if (!email) errors.push("Parent email is required.");
-    else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) errors.push("Email address is invalid.");
     if (!phone || phone.replace(/[\s()+.-]/g, "").length < 8) errors.push("A valid parent phone number is required.");
+    if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) errors.push("Email address is invalid.");
     if (rawFeeStatus && !feeStatus) errors.push(`Unknown fee status: “${rawFeeStatus}”.`);
 
     if (errors.length || !normalizedName) {
@@ -249,7 +255,7 @@ export function previewStudentCsvRows(
 
     const student: StudentImportRecord = {
       fullName: normalizedName,
-      registrationCode: selectedValue(values, mapping, "registrationCode"),
+      registrationCode,
       parentName,
       email,
       phone,
@@ -258,9 +264,23 @@ export function previewStudentCsvRows(
       feeStatus: feeStatus ?? "Unpaid",
       feeAmount: selectedValue(values, mapping, "feeAmount") || "0 RWF",
     };
-    const key = identityKey(student.fullName, student.studentClass);
-    const duplicateLabel = seen.get(key);
-    if (!duplicateLabel) seen.set(key, `CSV row ${lineNumber}`);
+
+    // FIX: Check duplicate registry_code to prevent "school_students_registry_code_key" error
+    let duplicateLabel: string | undefined;
+    const idKey = identityKey(student.fullName, student.studentClass);
+    const regKey = student.registrationCode ? registryKey(student.registrationCode) : "";
+
+    if (regKey && seenRegistryCode.has(regKey)) {
+      duplicateLabel = `Duplicate Registry Code ${student.registrationCode} - ${seenRegistryCode.get(regKey)}`;
+    } else if (seenIdentity.has(idKey)) {
+      duplicateLabel = `Duplicate student ${student.fullName} in ${student.studentClass} - ${seenIdentity.get(idKey)}`;
+    }
+
+    // Only add to seen maps if not duplicate, so first occurrence wins
+    if (!duplicateLabel) {
+      seenIdentity.set(idKey, `CSV row ${lineNumber}`);
+      if (regKey) seenRegistryCode.set(regKey, `CSV row ${lineNumber}`);
+    }
 
     return { lineNumber, values, student, errors, duplicateLabel };
   });
