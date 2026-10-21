@@ -198,6 +198,8 @@ Deno.serve(async (req) => {
 
     y -= 34;
     drawText("Please contact the school if you have questions about this report.", margin, y, 9);
+    drawText("Groupe Scolaire GS Gacuba II A @2026.", margin, y, 9);
+    drawText("Developed by SYBELLA SYSTEMS LTD", margin, y, 9);
 
     const pdfBytes = await pdf.save();
     const safeName = safeText(report.student_name)

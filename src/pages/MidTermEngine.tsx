@@ -580,6 +580,8 @@ const exportReportsPDF = async () => {
       pdf.text(`Class: ${report.class_name}`, 14, 49);
       pdf.text(`Assessment: ${selectedPeriod.name}`, 14, 56);
       pdf.text(`Official date: ${selectedPeriod.official_date}`, 14, 63);
+      pdf.text(`GS Gacuba II A @2026`, 14, 250);
+      pdf.text(`Developed by SYBELLA SYSTEMS LTD`, 14, 255);
 
       autoTable(pdf, {
         startY: 72,
@@ -593,6 +595,7 @@ const exportReportsPDF = async () => {
         headStyles: { fillColor: [58, 40, 24] },
       });
 
+     
       const finalY =
         (pdf as jsPDF & { lastAutoTable?: { finalY: number } })
           .lastAutoTable?.finalY ?? 80;
@@ -603,6 +606,7 @@ const exportReportsPDF = async () => {
         14,
         finalY + 12,
       );
+
 
       pdf.save(
         `${report.student_name.replace(/[^a-z0-9-_]/gi, '_')}_${selectedPeriod.name.replace(/[^a-z0-9-_]/gi, '_')}.pdf`,
