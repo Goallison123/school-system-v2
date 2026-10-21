@@ -100,7 +100,7 @@ export default function TeacherOverview({
         {error ? (
           <div role="alert" className="p-6">
             <h3 className="font-semibold text-stone-900">Your class list isn’t available</h3>
-            <p className="mt-1 text-sm text-stone-600">Please try again later or ask the school office for help.</p>
+            <p className="mt-1 text-sm text-stone-600">Please try again later or ask the school IT or dean of studies for help.</p>
           </div>
         ) : loading ? (
           <p className="p-6 text-sm text-stone-500">Loading your class list…</p>

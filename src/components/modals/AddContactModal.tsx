@@ -16,7 +16,7 @@ export default function AddContactModal({ onClose, onSave }: { onClose: () => vo
       <div className="modal small-modal" onClick={(e) => e.stopPropagation()}>
         <div className="modal-header">
           <div>
-            <p className="eyebrow">Family directory</p>
+            <p className="eyebrow">Parents directory</p>
             <h2>Add contact</h2>
           </div>
           <IconButton onClick={onClose}><X size={19} /></IconButton>

@@ -104,7 +104,7 @@ export default function MidTermEngine({ role, userId, notify }: Props) {
       setSelectedPeriodId((cur) => availablePeriods.some((p) => p.id === cur) ? cur : availablePeriods[0]?.id ?? '');
     } catch (cause) {
       console.error('Could not load mid-term workspace:', cause);
-      setError('Could not load mid-term records. Check the database migration and permissions.');
+      setError('Could not load mid-term records. Contact the school IT for support.'); // check if the database migrations exist or whether there are some permission requirements set on the relation.
     } finally { setLoading(false); }
   }, []);
 
@@ -123,8 +123,8 @@ export default function MidTermEngine({ role, userId, notify }: Props) {
       const { data, error: insertError } = await supabase.from('midterm_periods').insert({ name, official_date: newPeriodDate, status: 'open', created_by: userId ?? null }).select('id, name, official_date, status, finalized_at, created_at').single();
       if (insertError) throw insertError;
       setNewPeriodName(''); setNewPeriodDate(''); await refresh(); setSelectedPeriodId(data.id);
-      notify('Mid-term created. Its marks will be separate from other periods.');
-    } catch (cause) { console.error('Could not create mid-term:', cause); notify('Could not create the mid-term. Check the database permissions.'); }
+      notify('Mid-term created.'); //Each mid-term is actually unique given that the generation period is always unique. Periods should be first locked to open newly scheduled ones.
+    } catch (cause) { console.error('Could not create mid-term:', cause); notify('Could not create the mid-term. Talk to the school IT for support.'); } // Check the database permissions.
     finally { setBusy(false); }
   }
 
@@ -145,7 +145,7 @@ export default function MidTermEngine({ role, userId, notify }: Props) {
       }, { onConflict: 'period_id,student_id,subject_id' });
       if (saveError) throw saveError;
       setMarkValue(''); notify('Mark saved.'); await refresh();
-    } catch (cause) { console.error('Could not save mark:', cause); notify('The mark could not be saved. The period may be locked or database permissions may prevent the change.'); }
+    } catch (cause) { console.error('Could not save mark:', cause); notify('The mark could not be saved. The period may be locked.'); } // or database permissions may prevent the change.
     finally { setBusy(false); }
   }
 
@@ -173,11 +173,11 @@ export default function MidTermEngine({ role, userId, notify }: Props) {
       if (reportError) throw reportError;
       notify(`Generated ${reportsToCreate.length} report(s). The mid-term is still open and marks are not locked.`);
       await refresh();
-    } catch (cause) { console.error('Report generation failed:', cause); notify('Report generation failed. Check the database schema and permissions.'); }
+    } catch (cause) { console.error('Report generation failed:', cause); notify('Report generation failed.'); } // Check the database schema and permissions.
     finally { setBusy(false); }
   }
 
-  // STEP 2: FINALIZE + ISSUE LINKS (does NOT send SMS yet)
+ 
   async function finalizePeriod() {
     if (!supabase || !isDean(role) || busy) return;
     if (!selectedPeriod || isFinalized) { notify('Select an open mid-term first.'); return; }
@@ -197,7 +197,7 @@ export default function MidTermEngine({ role, userId, notify }: Props) {
       if (finalizeError) throw finalizeError;
       if (!data?.length) throw new Error('The period was not locked. It may already be finalized.');
 
-      // ISSUE SECURE PARENT LINKS NOW (only on finalize, not on PDF export)
+
       const reportIds = periodReports.map((r) => r.id);
       if (reportIds.length > 0) {
         const { data: linkData, error: linkError } = await supabase.functions.invoke('issue-midterm-links', { body: { report_ids: reportIds } });
@@ -215,11 +215,11 @@ export default function MidTermEngine({ role, userId, notify }: Props) {
       await refresh();
     } catch (cause) {
       console.error('Could not finalize mid-term:', cause);
-      notify('Could not finalize this mid-term. Check the database and permissions.');
+      notify('Could not finalize this mid-term.'); //  Check the database and permissions.
     } finally { setBusy(false); }
   }
 
-  // STEP 3: SEND NOTICES TO PARENTS (NEW)
+  
   async function sendParentNotices() {
     if (!supabase || !isDean(role) || sendingNotices) return;
     if (!selectedPeriod || !isFinalized) { notify('Finalize the mid-term before sending notices.'); return; }
@@ -232,7 +232,7 @@ export default function MidTermEngine({ role, userId, notify }: Props) {
     let delivered = 0; let failed = 0;
 
     try {
-      // Get parent links for this period
+  
       const { data: links } = await supabase.from('midterm_parent_links').select('id, report_id, token, url, student_id').in('report_id', periodReports.map(r => r.id));
       const linkMap = new Map((links ?? []).map((l: any) => [l.report_id, l.url || `${window.location.origin}/parent-report/${l.token}`]));
 
@@ -270,18 +270,18 @@ export default function MidTermEngine({ role, userId, notify }: Props) {
       notify(`Notices sent: ${delivered} delivered, ${failed} failed.`);
     } catch (cause) {
       console.error('Sending parent notices failed:', cause);
-      setError('Failed to send parent notices. Check SMS/email service credentials.');
+      setError('Failed to send parent notices.'); // Check SMS/email service credentials.
       notify('Failed to send parent notices.');
     } finally { setSendingNotices(false); }
   }
 
   function smsMessagePreview(periodName: string) { return `Mid-term ${periodName} report is ready. Check SMS/email for secure link.`; }
 
-  // FIXED: Export PDFs ONLY exports PDFs, no link generation
+  
   const exportReportsPDF = async () => {
     if (!selectedPeriod || periodReports.length === 0) { notify('No reports are available to export.'); return; }
     try {
-      // Export as single combined PDF for admin to avoid 30 download popups
+
       const pdf = new jsPDF();
       let isFirst = true;
 
@@ -384,7 +384,7 @@ export default function MidTermEngine({ role, userId, notify }: Props) {
       {canManage(role) && (
         <section className="rounded-2xl border border-stone-200 bg-white p-5 shadow-sm">
           <h2 className="font-semibold text-stone-900">Schedule a new mid-term</h2>
-          <p className="mt-1 text-xs text-stone-500">Give each mid-term a distinct name and date. Previous periods remain separate.</p>
+          <p className="mt-1 text-xs text-stone-500">Give each mid-term a distinct name and date.</p>
           <div className="mt-4 grid gap-3 sm:grid-cols-[1fr_190px_auto]">
             <input value={newPeriodName} onChange={(e) => setNewPeriodName(e.target.value)} placeholder="e.g. Term 1 Mid-Term" aria-label="Mid-term name" className="rounded-lg border border-stone-200 px-3 py-2 text-sm" />
             <input type="date" value={newPeriodDate} onChange={(e) => setNewPeriodDate(e.target.value)} aria-label="Official mid-term date" className="rounded-lg border border-stone-200 px-3 py-2 text-sm" />
@@ -480,7 +480,7 @@ export default function MidTermEngine({ role, userId, notify }: Props) {
       {canManage(role) && selectedPeriod && !isFinalized && (
         <section className="rounded-2xl border border-amber-200 bg-amber-50 p-5">
           <h2 className="font-semibold text-amber-950">Finalize this mid-term</h2>
-          <p className="mt-1 text-sm text-amber-900">Review the generated reports before finalizing. This will lock marks and automatically issue secure parent links for this period.</p>
+          <p className="mt-1 text-sm text-amber-900">Review the generated reports before finalizing.</p>
           <button onClick={() => void finalizePeriod()} disabled={busy || periodReports.length === 0} className="mt-4 inline-flex items-center gap-2 rounded-lg bg-amber-900 px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-50">
             <CheckCircle2 size={16} /> Finalize and issue parent links
           </button>
@@ -488,12 +488,12 @@ export default function MidTermEngine({ role, userId, notify }: Props) {
         </section>
       )}
 
-      {/* NEW: Send notices section - only after finalized */}
+     
       {canManage(role) && selectedPeriod && isFinalized && (
         <section className="rounded-2xl border border-emerald-200 bg-emerald-50 p-5">
           <h2 className="font-semibold text-emerald-950">Send report notices to parents</h2>
           <p className="mt-1 text-sm text-emerald-900">
-            Mid-term is locked. {periodReports.length} reports ready. {parentLinks.filter(l => periodReports.some(r => r.id === l.report_id)).length} secure links issued. Send SMS/email with download link to parents.
+            Mid-term is locked. {periodReports.length} reports ready. {parentLinks.filter(l => periodReports.some(r => r.id === l.report_id)).length}Send SMS/email with download link to parents.
           </p>
           <div className="mt-4 flex flex-wrap gap-2">
             <button onClick={() => void sendParentNotices()} disabled={sendingNotices || busy || periodReports.length === 0} className="inline-flex items-center gap-2 rounded-lg bg-emerald-700 px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-50">

@@ -276,7 +276,6 @@ export function previewStudentCsvRows(
       duplicateLabel = `Duplicate student ${student.fullName} in ${student.studentClass} - ${seenIdentity.get(idKey)}`;
     }
 
-    // Only add to seen maps if not duplicate, so first occurrence wins
     if (!duplicateLabel) {
       seenIdentity.set(idKey, `CSV row ${lineNumber}`);
       if (regKey) seenRegistryCode.set(regKey, `CSV row ${lineNumber}`);

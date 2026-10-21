@@ -63,7 +63,7 @@ export default function SettingsModal({
           {/* Institution */}
           <div>
             <label className="block text-[11px] font-bold text-slate-700 uppercase mb-1">
-              Institution
+              SCHOOL
             </label>
             <input
               value={SCHOOL_NAME}
@@ -104,58 +104,7 @@ export default function SettingsModal({
             </p>
           </div>
 
-          {/* Managed messaging services */}
-          <div className="pt-3 border-t border-slate-200 space-y-3">
-            <div>
-              <span className="text-[11px] font-bold text-slate-700 uppercase block">
-                Messaging Services
-              </span>
-              <p className="text-[10px] text-slate-500 mt-1">
-                These services are managed centrally by IT. Their configuration
-                cannot be changed from this workspace.
-              </p>
-            </div>
-
-            <div className="space-y-2">
-              <div className="p-3 rounded border border-slate-200 bg-slate-50 flex items-start gap-2.5">
-                <Smartphone
-                  size={16}
-                  className="text-[#ea580c] mt-0.5 shrink-0"
-                />
-                <div className="flex-1 min-w-0">
-                  <strong className="block text-[11px] text-slate-800">
-                    Africa&apos;s Talking SMS
-                  </strong>
-                  <span className="text-[10px] text-slate-500 block mt-0.5">
-                    Connected through the secure messaging backend
-                  </span>
-                  <span className="inline-flex items-center gap-1 mt-1.5 text-[10px] font-semibold text-slate-600">
-                    <ShieldCheck size={12} />
-                    IT-managed service
-                  </span>
-                </div>
-              </div>
-
-              <div className="p-3 rounded border border-slate-200 bg-slate-50 flex items-start gap-2.5">
-                <Mail
-                  size={16}
-                  className="text-[#0284c7] mt-0.5 shrink-0"
-                />
-                <div className="flex-1 min-w-0">
-                  <strong className="block text-[11px] text-slate-800">
-                    School Email
-                  </strong>
-                  <span className="text-[10px] text-slate-500 block mt-0.5">
-                    Email provider and credentials are managed centrally
-                  </span>
-                  <span className="inline-flex items-center gap-1 mt-1.5 text-[10px] font-semibold text-slate-600">
-                    <ShieldCheck size={12} />
-                    IT-managed service
-                  </span>
-                </div>
-              </div>
-            </div>
-
+          
             <p className="text-[10px] text-slate-400">
               For delivery issues, phone number problems, or messaging service
               changes, contact the school IT administrator.
@@ -190,6 +139,5 @@ export default function SettingsModal({
           </button>
         </div>
       </div>
-    </div>
   );
 }

@@ -55,35 +55,6 @@ const classes = [
   "S6 MPC", "S6 HGL"
 ];
 
-const initialStudents: Student[] = [
-  {
-    id: "STU-101",
-    registryCode: "STU-00101",
-    fullName: "Ineza Divine",
-    parentName: "Jean Claude Uwase",
-    email: "divine.ineza@gmail.com",
-    phone: "+250 788 123 456",
-    studentClass: "S1 A",
-    stream: "General",
-    feeStatus: "Paid",
-    feeAmount: "145,000 RWF",
-    lastUpdated: "Oct 12, 2026",
-  },
-  {
-    id: "STU-102",
-    registryCode: "STU-00102",
-    fullName: "Nshimiyimana Patrick",
-    parentName: "Marie Claire Mukamana",
-    email: "patrick.nshi@yahoo.com",
-    phone: "+250 790 987 654",
-    studentClass: "S2 B",
-    stream: "General",
-    feeStatus: "Partial",
-    feeAmount: "75,000 RWF",
-    lastUpdated: "Oct 10, 2026",
-  },
-];
-
 const emptyForm = {
   fullName: "",
   registryCode: "",
@@ -160,7 +131,7 @@ function toArchivePayload(student: Student, reason = "Deleted by admin") {
 }
 
 function newRegistryCode() {
-  return `STU-${Math.floor(10000 + Math.random() * 90000)}`;
+  return `GSG-${Math.floor(10000 + Math.random() * 90000)}`;
 }
 
 function validateParentContact(email: string, phone: string) {
@@ -284,7 +255,7 @@ export default function Students() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `gs-gacuba-student-registry-${activeSubMenu === "archive" ? "archive-" : ""}${new Date().toISOString().slice(0, 10)}.xls`;
+    a.download = `GS-GACUBA-STUDENT-REGISTRY-${activeSubMenu === "archive" ? "archive-" : ""}${new Date().toISOString().slice(0, 10)}.xls`;
     a.click();
     URL.revokeObjectURL(url);
     notify("Student registry exported to Excel.");
@@ -368,7 +339,7 @@ export default function Students() {
       const { error: archiveError } = await supabase.from("school_students_archive").insert(toArchivePayload(studentToArchive, reason));
       if (archiveError) {
         console.error("Archive failed", archiveError);
-        notify("Failed to archive student. Check archive table exists.");
+        notify("Failed to archive student. Try again, refresh your browser or talk to the school IT.");
         return;
       }
       // 2. Delete from main table
@@ -556,7 +527,7 @@ export default function Students() {
 
         <div className="flex items-center justify-between text-xs text-slate-500 mt-3 pt-2 border-t border-slate-100">
           <span>Total Records: <strong className="font-mono font-bold text-slate-800">{filteredStudents.length}</strong> {studentsLoading && <span className="text-[10px] text-slate-400 font-mono">(Syncing...)</span>}</span>
-          <span className="text-[11px]">{activeSubMenu === "archive" ? "Archive subfolder: school_students_archive" : "Click any record to inspect or modify pupil details"}</span>
+          <span className="text-[11px]">{activeSubMenu === "archive" ? "Archive (Student's registry subfolder)" : "Click any record to inspect or modify student details"}</span>
         </div>
       </main>
 
@@ -568,13 +539,13 @@ export default function Students() {
             <div className="modal-header-bar"><h2>{isAddMode ? "Register new student" : "Edit student record"}</h2><button type="button" onClick={closeModal} className="modal-close-btn"><X size={16} /></button></div>
             <div className="modal-section-marker">Student Information</div>
             <div className="modal-form-grid">
-              <div className="form-row"><label className="form-label"><span className="req">*</span> Student index code</label><div className="form-input-with-button"><input type="text" value={formData.registryCode} onChange={(e) => setFormData({ ...formData, registryCode: e.target.value })} placeholder="e.g. STU-10293" className="form-input" /><button type="button" onClick={() => setFormData({ ...formData, registryCode: newRegistryCode() })} className="form-field-action-btn"><Search size={14} /></button></div></div>
+              <div className="form-row"><label className="form-label"><span className="req">*</span> Student index code</label><div className="form-input-with-button"><input type="text" value={formData.registryCode} onChange={(e) => setFormData({ ...formData, registryCode: e.target.value })} placeholder="e.g. GSG-10293" className="form-input" /><button type="button" onClick={() => setFormData({ ...formData, registryCode: newRegistryCode() })} className="form-field-action-btn"><Search size={14} /></button></div></div>
               <div className="form-row"><label className="form-label"><span className="req">*</span> Student full name</label><input type="text" value={formData.fullName} onChange={(e) => setFormData({ ...formData, fullName: e.target.value })} placeholder="e.g. Mugisha Jean Claude" className="form-input" /></div>
-              <div className="form-row"><label className="form-label">Academic track / combination</label><input type="text" value={formData.stream} onChange={(e) => setFormData({ ...formData, stream: e.target.value })} placeholder="e.g. General, Science (MPC), Arts (HGL)" className="form-input" /></div>
+              <div className="form-row"><label className="form-label">combination</label><input type="text" value={formData.stream} onChange={(e) => setFormData({ ...formData, stream: e.target.value })} placeholder="e.g. General, Science (MPC), Arts (HGL)" className="form-input" /></div>
               <div className="form-group-2col"><div className="form-row"><label className="form-label"><span className="req">*</span> Class stream</label><select value={formData.studentClass} onChange={(e) => setFormData({ ...formData, studentClass: e.target.value })} className="form-select"><option value="">--Select class--</option>{availableClasses.map((c) => (<option key={c} value={c}>{c}</option>))}</select></div><div className="form-row"><label className="form-label"><span className="req">*</span> Tuition fee status</label><select value={formData.feeStatus} onChange={(e) => setFormData({ ...formData, feeStatus: e.target.value as FeeStatus })} className="form-select"><option value="Paid">Fully paid</option><option value="Partial">Partial payment</option><option value="Unpaid">Unpaid</option></select></div></div>
               <div className="text-xs font-bold text-[#ea580c] pt-2 border-t border-slate-100">Parent & Fee Information</div>
               <div className="form-group-2col"><div className="form-row"><label className="form-label"><span className="req">*</span> Parent or guardian name</label><input type="text" value={formData.parentName} onChange={(e) => setFormData({ ...formData, parentName: e.target.value })} placeholder="e.g. Jean Bosco Mugisha" className="form-input" /></div><div className="form-row"><label className="form-label"><span className="req">*</span> Parent phone number</label><input type="text" value={formData.phone} onChange={(e) => setFormData({ ...formData, phone: e.target.value })} placeholder="+250 788 000 000" className="form-input" /></div></div>
-              <div className="form-group-2col"><div className="form-row"><label className="form-label">Parent email address</label><input type="email" value={formData.email} onChange={(e) => setFormData({ ...formData, email: e.target.value })} placeholder="parent@example.com" className="form-input" /></div><div className="form-row"><label className="form-label">Term tuition amount</label><input type="text" value={formData.feeAmount} onChange={(e) => setFormData({ ...formData, feeAmount: e.target.value })} placeholder="145,000 RWF" className="form-input" /></div></div>
+              <div className="form-group-2col"><div className="form-row"><label className="form-label">Parent email address</label><input type="email" value={formData.email} onChange={(e) => setFormData({ ...formData, email: e.target.value })} placeholder="parent@example.com" className="form-input" /></div><div className="form-row"><label className="form-label">Term tuition amount</label><input type="text" value={formData.feeAmount} onChange={(e) => setFormData({ ...formData, feeAmount: e.target.value })} placeholder="24,000 RWF" className="form-input" /></div></div>
               {isAddMode && (<div className="pt-2 border-t border-slate-100 flex items-center gap-2"><input type="checkbox" id="autoWelcomeCheckbox" checked={sendWelcomeNotice} onChange={(e) => setSendWelcomeNotice(e.target.checked)} className="accent-[#ea580c] h-4 w-4" /><label htmlFor="autoWelcomeCheckbox" className="text-xs text-slate-700 cursor-pointer font-medium">Send welcome message to parent via SMS and email</label></div>)}
               {formError && (<p className="text-xs text-red-600 font-semibold mt-1">{formError}</p>)}
             </div>
@@ -588,9 +559,9 @@ export default function Students() {
           <div className="modal-dialog-box" onClick={(e) => e.stopPropagation()}>
             <div className="modal-header-bar"><h2>Archive Student</h2><button type="button" onClick={() => setStudentToArchive(null)} className="modal-close-btn"><X size={16} /></button></div>
             <div className="p-4 space-y-3">
-              <p className="text-sm text-slate-700">You are about to move <strong>{studentToArchive.fullName}</strong> ({studentToArchive.registryCode}) to the archive subfolder.</p>
+              <p className="text-sm text-slate-700">You are about to move <strong>{studentToArchive.fullName}</strong> ({studentToArchive.registryCode}) to the archive folder.</p>
               <p className="text-[11px] text-slate-500">The record will be saved in <code className="bg-slate-100 px-1 rounded">school_students_archive</code> and removed from active list. You can restore it later.</p>
-              <div className="form-row"><label className="form-label">Reason for archiving (optional)</label><input type="text" value={archiveReason} onChange={(e) => setArchiveReason(e.target.value)} placeholder="e.g. Graduated, Transferred, Duplicate record" className="form-input" /></div>
+              <div className="form-row"><label className="form-label">Reason for archiving (optional)</label><input type="text" value={archiveReason} onChange={(e) => setArchiveReason(e.target.value)} placeholder="e.g. Level completed, Transferred, Duplicate record" className="form-input" /></div>
             </div>
             <div className="modal-footer-bar"><button type="button" onClick={() => setStudentToArchive(null)} className="btn-enterprise-cancel">Cancel</button><button type="button" onClick={handleArchive} className="bg-amber-600 hover:bg-amber-700 text-white px-4 py-2 rounded text-xs font-bold flex items-center gap-2"><Archive size={14} /> Move to Archive</button></div>
           </div>

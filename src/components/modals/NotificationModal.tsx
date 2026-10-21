@@ -27,7 +27,7 @@ type DispatchAction = 'SEND_NOW' | 'SAVE_DRAFT' | 'SCHEDULE';
 
 const REQUIRED_SCHOOL_FEES_RWF = 24000;
 
-// FIX: handles "145,000 RWF", "1200", etc.
+
 function getRemainingBalanceRwf(contact: Contact): number {
   const raw = String(contact.fee_amount ?? contact.fees ?? '0').replace(/[^\d]/g, '');
   const paid = Number(raw);
@@ -50,22 +50,21 @@ function personalizeMessage(template: string, contact: Contact): string {
 
 const templates: Record<Category, { title: string; message: string; tags: string[] }> = {
   FEES: {
-    title: 'School Fees Remaining Balance Reminder',
+    title: 'Umwenda mubereyemo ishuri',
     message:
-      'Dear {PARENTNAME}, the remaining school fees balance for {FULLNAME} in {CLASS} is {FEES} RWF. Please contact the school administration if you have already paid.',
+      'Mubyeyi, {PARENTNAME}, Umwenda {FULLNAME} wiga muri {CLASS} asigariyemo ishuri GS Gacuba II A ni {FEES} FRW. Ibihe byiza!',
     tags: ['{PARENTNAME}', '{FULLNAME}', '{FEES}', '{CLASS}'],
   },
   ANNOUNCEMENT: {
-    title: 'Important School Announcement',
-    message: 'Dear {PARENTNAME}, please note this announcement concerning {FULLNAME} of {CLASS}: ',
+    title: 'Itangazo rigenewe ababyeyi',
+    message: 'Mubyeyi, {PARENTNAME}, GS Gacuba II A yishimiye kubagezaho ubutumire munama yababyei iteganyijwe kuba kuri: [INSERT THE DATE HERE]. Muzitabire kubwa{FULLNAME} wiga muri {CLASS}. Ibihe byiza! ',
     tags: ['{PARENTNAME}', '{FULLNAME}', '{CLASS}'],
   },
   REPORT: {
-    title: 'Academic Performance Report',
-    message:
-      'Dear {PARENTNAME}, the academic report for {FULLNAME} of {CLASS} is not available for online download yet. Please contact the school administration.',
+    title: 'Indangamanota zo mugihembwe hagaiti (mid-term)',
+    message: 'Mubyeyi, {PARENTNAME}, GS Gacuba irabamenyesha ko indangamanota ya mid-term ya {FULLNAME} wiga muri {CLASS}yasohotse. Wakwifashisha link ikurikira kugirango uyibone. Ibihe Byiza!',
     tags: ['{PARENTNAME}', '{FULLNAME}', '{CLASS}'],
-  },
+    },
 };
 
 type DeliveryResult = {
@@ -305,7 +304,7 @@ export default function NotificationModal({
       );
     } catch (err: unknown) {
       console.error('Dispatch fatal error', err);
-      setError('We couldn’t send the messages. Please try again. If it persists, contact the administrator.');
+      setError('We couldn’t send the messages. Please try again. If it persists, contact the IT.');
     } finally {
       setIsSending(false);
     }
@@ -373,11 +372,11 @@ export default function NotificationModal({
             <div className="grid grid-cols-2 gap-3">
               <label className={`flex items-start gap-3 p-3 rounded border transition cursor-pointer ${useSMS ? 'border-[#ea580c] bg-orange-50/70 text-slate-900' : 'border-slate-200 bg-slate-50 text-slate-500 hover:bg-slate-100'}`}>
                 <input type="checkbox" checked={useSMS} onChange={(event) => setUseSMS(event.target.checked)} className="mt-0.5 accent-[#ea580c]" />
-                <div><div className="flex items-center gap-1.5"><Smartphone size={14} className={useSMS ? 'text-[#ea580c]' : 'text-slate-400'} /><strong className="text-xs font-semibold">SMS</strong></div><p className="text-[10px] text-slate-500 mt-0.5">Personalized messages to parent numbers</p></div>
+                <div><div className="flex items-center gap-1.5"><Smartphone size={14} className={useSMS ? 'text-[#ea580c]' : 'text-slate-400'} /><strong className="text-xs font-semibold">SMS</strong></div><p className="text-[10px] text-slate-500 mt-0.5">Messages to parent numbers</p></div>
               </label>
               <label className={`flex items-start gap-3 p-3 rounded border transition cursor-pointer ${useEmail ? 'border-emerald-600 bg-emerald-50/70 text-slate-900' : 'border-slate-200 bg-slate-50 text-slate-500 hover:bg-slate-100'}`}>
                 <input type="checkbox" checked={useEmail} onChange={(event) => setUseEmail(event.target.checked)} className="mt-0.5 accent-emerald-700" />
-                <div><div className="flex items-center gap-1.5"><Mail size={14} className={useEmail ? 'text-emerald-700' : 'text-slate-400'} /><strong className="text-xs font-semibold">Email</strong></div><p className="text-[10px] text-slate-500 mt-0.5">Personalized email for each parent</p></div>
+                <div><div className="flex items-center gap-1.5"><Mail size={14} className={useEmail ? 'text-emerald-700' : 'text-slate-400'} /><strong className="text-xs font-semibold">Email</strong></div><p className="text-[10px] text-slate-500 mt-0.5">Email for each parent</p></div>
               </label>
             </div>
           </div>
@@ -390,7 +389,7 @@ export default function NotificationModal({
             <textarea id="broadcast-message" ref={messageRef} rows={3} value={message} onChange={(event) => setMessage(event.target.value)} placeholder="Enter message for parents..." className="form-input w-full font-sans text-xs resize-y" />
             <div className="mt-1 flex items-center justify-between text-[11px] text-slate-500">
               <div className="flex items-center gap-3 flex-wrap"><span className="font-mono">Length: {message.length} chars</span>{useSMS && (<span className="text-emerald-800 font-medium flex items-center gap-1"><DollarSign size={12} />Estimated: ~RWF {smsCostEstimate.estimatedCostRwf}</span>)}</div>
-              <span className="text-[10px] text-slate-400 font-mono">Per-recipient personalization</span>
+              <span className="text-[10px] text-slate-400 font-mono">Per-recipient </span>
             </div>
           </div>
 

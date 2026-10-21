@@ -9,7 +9,7 @@ export default function ImportModal({ onClose, onChoose }: { onClose: () => void
       <div className="modal small-modal" onClick={(e) => e.stopPropagation()}>
         <div className="modal-header">
           <div>
-            <p className="eyebrow">Family directory</p>
+            <p className="eyebrow"> Parents directory</p>
             <h2>Import contacts</h2>
           </div>
           <IconButton onClick={onClose}><X size={19} /></IconButton>

@@ -94,7 +94,7 @@ export default function Contacts({
           <thead>
             <tr>
               <th>Parent / Guardian Name</th>
-              <th>Pupil / Student</th>
+              <th>Student</th>
               <th>Class Stream</th>
               <th>Primary Contact Telephone</th>
               <th>Email Address</th>

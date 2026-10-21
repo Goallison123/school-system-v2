@@ -20,7 +20,7 @@ export default function ContentModal({ onClose, onSave, initialContent }: { onCl
     <section role="dialog" aria-modal="true" aria-label={initialContent ? 'Edit content' : 'Create content'} className="fixed inset-y-0 right-0 z-50 flex w-full max-w-[520px] flex-col overflow-y-auto border-l border-[#EAE5DC] bg-white shadow-2xl">
         <div className="modal-header">
           <div>
-            <p className="eyebrow">Connected website</p>
+            <p className="eyebrow">Manage Gacuba website content</p>
             <h2>{initialContent ? 'Edit content' : 'Create content'}</h2>
           </div>
           <IconButton onClick={onClose}><X size={19} /></IconButton>
