@@ -18,7 +18,7 @@
 
 ## 2. Existing database objects referenced by application code
 
-These names are referenced by the inspected application code or existing migrations. Their presence in the live database has not yet been verified.
+These names are referenced by the inspected application code or existing migrations. Their presence in the live database has not yet been verified. @prashant shall make sure that the production database differs from the staging database (will be used for dev too). Therefore, ensuring that the database is on production grade remains his responsibility.
 
 ### Students and staff
 
@@ -72,9 +72,9 @@ Additional functions and triggers may be discovered during schema inspection.
 - Only the dean of studies can edit mid-term marks.
 - IT administrators must not inherit dean-only mark-editing permissions.
 - Teachers may only access academic data explicitly permitted for their assignments.
-- Only authorized academic staff may create or manage assessment periods.
+- Only authorized academic staff may create or manage assessment periods. currently the dean of studies.
 - Report generation must not finalize an assessment period.
-- Explicit finalization must prevent further mark changes.
+- Explicit finalization must prevent further mark changes. If students make reclamation, those changes in marks will not be reflected in this system. CAMIS shall handle that during final termly reports, unless requested by the school.
 - Finalized marks and reports must remain available as historical records.
 - Every new assessment period must have a distinct identifier.
 - Historical records must never be reassigned to a new period merely because the current year changes.
@@ -83,12 +83,12 @@ These requirements must be enforced by PostgreSQL permissions, RLS policies, and
 
 ## 5. Student data protection
 
-- Anonymous users must not be able to read or modify private student records.
+- Anonymous users (who does not exist on the current build yet) must not be able to read or modify private student records.
 - Authenticated users must only access data authorized for their role.
 - Service-role credentials must never be included in frontend environment variables.
-- Role changes must be restricted and auditable.
+- Role changes must be restricted and auditable. This is done only by the school IT.
 - Database exports and seed scripts must not expose real student or parent information.
-- Data retention and backup procedures must be documented.
+- Data retention and backup procedures must be documented. On free plans (which we are currently using until the school finds it a need to upgrade. Backup is not available in the current plan, thefore, all party will do their best to avoid data loss as long as no backup service in the current plan.)
 
 ## 6. Schema and integrity requirements
 
@@ -107,7 +107,7 @@ Verify the following before adding or changing any constraints:
 
 Do not add a constraint until existing records have been checked for violations.
 
-## 7. Existing migration review
+## 7. Existing migration review (on the date of writing of this markdown)
 
 Review existing migrations before preparing corrective migrations.
 
@@ -139,7 +139,7 @@ Do not rewrite or delete migration history to repair production.
 - [ ] Verify anonymous access is restricted.
 - [ ] Test permissions for dean, headteacher, teacher, and IT roles.
 - [ ] Verify role checks against authenticated user identity.
-- [ ] Verify storage bucket policies for generated reports.
+- [ ] Verify storage bucket policies for generated reports. storage buckets not yet confirmed created (@prashant will be responsible for creating and getting them configured)
 - [ ] Verify secrets are stored server-side.
 
 ### Academic workflow
