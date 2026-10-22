@@ -12,19 +12,19 @@
 ## 1. Executive Summary & Product Vision
 
 ### 1.1 Purpose
-The **G.S Gacuba 2A Admin Portal** is an enterprise-grade school management platform engineered specifically for the administrative, pedagogical, and communication requirements of Groupe Scolaire Gacuba 2A. The institution operates both Primary and Secondary education sections under the academic framework of the **Rwanda Education Board (REB)**.
+The **G.S Gacuba 2A Admin Portal** is an enterprise-grade school management platform engineered specifically for the administrative, pedagogical, and communication requirements of Groupe Scolaire Gacuba 2A. The institution operates Secondary education sections under the academic framework of the **Rwanda Education Board (REB)**.
 
 The platform provides a centralized, secure, multi-role operating environment for:
 1. **Student Records & Enrollment Lifecycle:** Managing learner profiles, class streams, parent/guardian contact credentials, and school fee payment ledgers.
-2. **Mid-Term Examination & Academic Engine:** Administering class subject allocations, teacher class assignments, assessment mark entries, automatic report card compilation, Rwanda national curriculum grading, and Dean of Studies verification.
+2. **Mid-Term assessments & Academic Engine:** Administering class subject allocations, teacher class assignments, assessment mark entries, automatic report card compilation, Rwanda national curriculum grading, and Dean of Studies verification.
 3. **Automated Document & PDF Pipeline:** Compiling verifiable, print-ready PDF academic report cards with dynamic grade breakdowns and automatic seven-day storage cache invalidation.
-4. **Targeted Multi-Channel Communications:** Dispatching deduplicated, personalized SMS and email notifications to parents regarding tuition fees, academic progress, PTA assemblies, and official examination schedules.
+4. **Targeted Multi-Channel Communications:** Dispatching deduplicated, personalized SMS and email notifications to parents regarding tuition fees, academic progress, PTA assemblies, and official examination schedules (if needed and paid for).
 5. **Public-Facing Content Management (CMS):** Publishing curated news, announcements, and cultural/facilities galleries to the public school website.
 6. **Admissions & Visitor Desk:** Triage of prospective parent admissions inquiries with a direct 1-click registration bridge to the student registry.
 
 ### 1.2 Core Business Objectives
 - **Zero Loss of Academic Records:** Eliminate manual paper mark ledgers and ad-hoc spreadsheets through an authoritative PostgreSQL database backed by strict Row-Level Security (RLS).
-- **Sub-Second Report Generation:** Automate compilation of pupil mid-term performance cards immediately upon teacher mark completion.
+- **Sub-Second Report Generation:** Automate compilation of student mid-term performance cards immediately upon teacher mark completion.
 - **Privacy Enforcement:** Shield parent telephone numbers and email addresses from classroom teachers while maintaining full transparent visibility for the Headteacher and Dean of Studies.
 - **Financial Traceability:** Provide instant visibility over school fee collection rates (`Paid`, `Partial`, `Unpaid`) across every class stream.
 - **Duplicate Dispatch Prevention:** Guarantee through cryptographic fingerprinting that duplicate SMS campaigns or notifications are never accidentally sent to guardians.
@@ -38,7 +38,7 @@ The system enforces strict role-based access control (RBAC). A user's role is go
 ### Persona 1: Dean of Studies (`dean_of_studies`)
 - **Profile:** Head of academic affairs and curriculum compliance.
 - **Key Responsibilities:**
-  - Configures subject matrices for all primary and secondary streams (`P1 A` through `S6 MCB/MEG`).
+  - Configures subject matrices for all streams (`S1 A` through `S6 MPC / HGL`).
   - Assigns teachers to class subjects using unique teacher UUID identifiers.
   - Sets the official mid-term examination dates and grading deadlines.
   - Reviews, approves, overrides, or forces regeneration of student academic reports.
@@ -58,8 +58,8 @@ The system enforces strict role-based access control (RBAC). A user's role is go
 ### Persona 3: Classroom Teacher (`teacher`)
 - **Profile:** Academic educator responsible for specific classes and subjects.
 - **Key Responsibilities:**
-  - Inspects the assigned classroom pupil roster (pupil names and streams only).
-  - Inputs, reviews, and updates assessment marks (0 to 100) for assigned pupils.
+  - Inspects the assigned classroom student roster (student names and streams only).
+  - Inputs, reviews, and updates assessment marks (0 to 100) for assigned students.
   - Locks marks once an official report card has been compiled.
   - Downloads PDF report cards for pupils in assigned classes.
 - **Permissions:** Strictly restricted by database RLS to classes assigned via `public.teacher_class_assignments`. Denied access to parent contact numbers, emails, financial records, or other classes.
@@ -68,8 +68,6 @@ The system enforces strict role-based access control (RBAC). A user's role is go
 - **Profile:** Technical custodian and systems administrator.
 - **Key Responsibilities:**
   - Manages staff onboarding and provisions user roles (`dean_of_studies`, `headteacher`, `teacher`, `it`).
-  - Configures workspace settings, default communication channels, and database integrity.
-  - Manages edge functions, external gateway credentials, and technical audits.
 - **Permissions:** Superuser privileges across user management, system tables, and technical logs.
 
 ### Persona 5: Prospective Parent / Visitor (Public)
@@ -80,20 +78,20 @@ The system enforces strict role-based access control (RBAC). A user's role is go
 
 ## 3. Functional Modules & Requirements Specification
 
-### Module 1: Student Registry & Pupil Management
+### Module 1: Student Registry & student Management
 
-#### 1.1 Manual Pupil Registration
+#### 1.1 Manual student Registration
 - **FR-1.1.1:** The system shall allow authorized users (`dean_of_studies`, `it`) to manually register an individual student.
 - **FR-1.1.2:** Mandatory registration fields:
   - `fullName` (String, minimum 2 tokens: first name and surname)
-  - `registration_number` (String, unique alphanumeric institution ID, e.g., `REG-2026-001` or `STU-101`)
-  - `studentClass` (Enum: `P1 A`, `P1 B`, `P2 A`, `P2 B`, `P3 A`, `P4 A`, `P5 A`, `P6 A`, `S1 A`, etc.)
-  - `stream` (String, e.g., `A`, `B`, `Sciences`, `Humanities`)
+  - `registration_number` (String, unique alphanumeric institution ID, e.g., `REG-2026-001` or `STU-101` but we are preferabbly using `GSC-XXXXX`)
+  - `studentClass` (Enum: `S1 A`, `S1 B`, `S2 A`, `S2 B`, `S3 A`, `S4 ARH`, `P5 ARH`, `P6 HGL`, `S6 MPC`, etc.)
+  - `stream` (String, e.g., `General or O' level`, `Sciences`, `Humanities`)
   - `parentName` (String, mandatory, cannot be "not provided")
   - `email` (Valid RFC 5322 email string)
   - `phone` (E.164 compliant or international format with at least 8 normalized digits)
   - `feeStatus` (Enum: `Paid`, `Partial`, `Unpaid`)
-  - `feeAmount` (String representing currency and value, e.g., `145,000 RWF`)
+  - `feeAmount` (String representing currency and value, e.g., `24,000 RWF`)
 - **FR-1.1.3:** The system shall automatically record `created_at`, `updated_at`, and set the initial record status.
 
 #### 1.2 Bulk CSV Data Ingestion & Auto-Mapping
@@ -131,7 +129,7 @@ The system enforces strict role-based access control (RBAC). A user's role is go
 - **FR-2.2.3:** Teachers cannot alter marks for a pupil once an official report card has been compiled, unless unlocked by the Dean of Studies.
 
 #### 2.3 Grading Rules & Report Compilation
-- **FR-2.3.1:** Grading follows Rwanda Education Board (REB) standards:
+- **FR-2.3.1:** Grading follows Rwanda Education Board (REB) (Weight is not confirmed to be the real ones, no official documentation found) standards:
   - 80.0% – 100.0%: **Grade A** (Weight: 10 – 8)
   - 70.0% – 79.9%: **Grade B** (Weight: 7)
   - 60.0% – 69.9%: **Grade C** (Weight: 6)
@@ -152,7 +150,7 @@ The system enforces strict role-based access control (RBAC). A user's role is go
 - **FR-3.1:** The system shall generate official A4 academic report cards in PDF format using `jspdf` and `jspdf-autotable`.
 - **FR-3.2:** The PDF must include:
   - Institutional header: "GROUPE SCOLAIRE GACUBA 2A", District, Academic Period.
-  - Learner demographics: Pupil name, Registration code, Class, Stream.
+  - Learner demographics: student name, Registration code, Class, Stream.
   - Tabular academic assessment breakdown: Subject, Mark (/100), REB Grade, Weight.
   - Overall summary: Class average, Total enabled subjects evaluated, Official Dean remarks.
   - Verification signature block and institutional stamp placeholder.
@@ -165,7 +163,7 @@ The system enforces strict role-based access control (RBAC). A user's role is go
 
 ### Module 4: Multi-Channel Parent Communications & SMS Dispatcher
 
-- **FR-4.1:** The portal shall support drafting and dispatching communication campaigns across SMS, WhatsApp, and Email channels.
+- **FR-4.1:** The portal shall support drafting and dispatching communication campaigns across SMS, WhatsApp, and Email channels with SMS being the priority and email for updates for the platform users.
 - **FR-4.2:** Communication categories: `Fee reminder`, `Parent notification`, `Examination result`, `General announcement`.
 - **FR-4.3:** Dynamic template placeholders: `{FULLNAME}` (replaced with student full name), `{FEES}` (replaced with outstanding balance).
 - **FR-4.4 (Cryptographic Deduplication):**
@@ -212,8 +210,8 @@ The system enforces strict role-based access control (RBAC). A user's role is go
 
 ```gherkin
 Scenario: Automatic report compilation upon final subject mark
-  Given Pupil "Ineza Divine" is enrolled in class "P2 A"
-  And class "P2 A" has 3 enabled subjects: "Mathematics", "English", "Kinyarwanda"
+  Given Pupil "Ineza Divine" is enrolled in class "S2 A"
+  And class "S2 A" has 3 enabled subjects: "Mathematics", "English", "Kinyarwanda"
   And "Ineza Divine" currently has marks for "Mathematics" (85) and "English" (78)
   When the teacher enters a mark of "90" for "Kinyarwanda"
   Then the database trigger "auto_compile_midterm_on_mark_save" executes
@@ -231,10 +229,10 @@ Scenario: Automatic report compilation upon final subject mark
 ```gherkin
 Scenario: Teacher queries student registry
   Given Teacher "Jean Pierre" is authenticated with role "teacher"
-  And Teacher "Jean Pierre" is assigned to class "P4 A" only
+  And Teacher "Jean Pierre" is assigned to class "S4 ARH" only
   When the teacher navigates to the student register
   Then the system displays the "teacher_student_register" security barrier view
-  And the teacher sees only students enrolled in "P4 A"
+  And the teacher sees only students enrolled in "S4 ARH"
   And the student view omits parent name, phone number, email, fee status, and fee balance
   And direct SQL queries to "public.school_students" are rejected with an RLS permission denied error
 ```
@@ -246,7 +244,7 @@ Scenario: Teacher queries student registry
 
 ```gherkin
 Scenario: Submitting an identical SMS campaign batch
-  Given a fee reminder SMS was dispatched to 15 parents in class "P1 A" with message "Please settle term fees"
+  Given a fee reminder SMS was dispatched to 15 parents in class "S1 A" with message "Please settle term fees"
   And a dispatch fingerprint was recorded in "public.sms_campaign_dispatches"
   When an administrator accidentally clicks "Send SMS" with the exact same message and recipient list
   Then the system detects the identical cryptographic fingerprint
@@ -282,7 +280,7 @@ Scenario: Regenerating expired report card PDF
 
 ### 5.1 Performance Targets
 - **NFR-1 (UI Responsiveness):** Dashboard and registry queries shall achieve First Contentful Paint (FCP) in <1.2 seconds on standard 3G/4G connections.
-- **NFR-2 (Search Latency):** Client-side filter queries over rosters of up to 5,000 pupils shall return results in <50 milliseconds.
+- **NFR-2 (Search Latency):** Client-side filter queries over rosters of up to 5,000 students shall return results in <50 milliseconds.
 - **NFR-3 (Report Generation):** Database-triggered compilation of an individual report card shall execute in <150 milliseconds. Batch generation of 100 reports shall complete in <8 seconds.
 - **NFR-4 (PDF Compilation):** Client-side jsPDF rendering and buffer upload to Supabase Storage shall complete in <1.8 seconds per report.
 
