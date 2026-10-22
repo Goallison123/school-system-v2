@@ -372,10 +372,6 @@ export default function MidTermEngine({ role, userId, notify }: Props) {
         pdf.text(`Assessment: ${selectedPeriod.name}`, 14, 56);
         pdf.text(`Official date: ${selectedPeriod.official_date}`, 14, 63);
         const tokenInfo = issuedTokens[report.id];
-        if (tokenInfo) {
-          const link = tokenInfo.url || buildParentLink(report, tokenInfo.token);
-          pdf.setFontSize(8); pdf.text(`Secure link: ${link}`, 14, 68);
-        }
         pdf.text(`GS Gacuba II A @2026`, 14, 250);
         autoTable(pdf, {
           startY: 72, head: [['Subject', 'Mark / 100', 'Grade']],

@@ -40,7 +40,7 @@ export default function LoginScreen({ onLogin }: { onLogin: (email: string, pass
         <form onSubmit={submit} className="p-6 space-y-4">
           <div>
             <label className="block text-xs font-bold text-[#451a03] uppercase tracking-wide mb-1">
-              School email <span className="text-[#ea580c]">*</span>
+              School approved email <span className="text-[#ea580c]">*</span>
             </label>
             <input
               type="email"

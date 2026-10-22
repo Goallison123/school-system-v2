@@ -179,15 +179,15 @@ export default function Campaigns({
         <button type="button" onClick={() => setActiveTab('broadcasts')} className={`px-3 py-1.5 text-xs font-semibold rounded transition flex items-center gap-1.5 ${activeTab === 'broadcasts' ? 'bg-[#ea580c] text-white shadow-sm' : 'text-slate-600 hover:bg-slate-200'}`}>
           <Megaphone size={13} /> Broadcast notices ({filteredCampaigns.length})
         </button>
-        <button type="button" onClick={() => { setActiveTab('automations'); setRules(getAutomationRules()); }} className={`px-3 py-1.5 text-xs font-semibold rounded transition flex items-center gap-1.5 ${activeTab === 'automations' ? 'bg-[#ea580c] text-white shadow-sm' : 'text-slate-600 hover:bg-slate-200'}`}>
+        {/*<button type="button" onClick={() => { setActiveTab('automations'); setRules(getAutomationRules()); }} className={`px-3 py-1.5 text-xs font-semibold rounded transition flex items-center gap-1.5 ${activeTab === 'automations' ? 'bg-[#ea580c] text-white shadow-sm' : 'text-slate-600 hover:bg-slate-200'}`}>
           <Zap size={13} /> Automated reminders ({rules.filter((rule) => rule.enabled).length} Active)
-        </button>
+        </button> */}
         <button type="button" onClick={() => { setActiveTab('logs'); setLogs(getDispatchLogs()); }} className={`px-3 py-1.5 text-xs font-semibold rounded transition flex items-center gap-1.5 ${activeTab === 'logs' ? 'bg-[#ea580c] text-white shadow-sm' : 'text-slate-600 hover:bg-slate-200'}`}>
           <FileText size={13} /> Delivery history ({logs.length})
         </button>
-        <button type="button" onClick={() => setActiveTab('gateways')} className={`px-3 py-1.5 text-xs font-semibold rounded transition flex items-center gap-1.5 ${activeTab === 'gateways' ? 'bg-[#ea580c] text-white shadow-sm' : 'text-slate-600 hover:bg-slate-200'}`}>
+        {/*<button type="button" onClick={() => setActiveTab('gateways')} className={`px-3 py-1.5 text-xs font-semibold rounded transition flex items-center gap-1.5 ${activeTab === 'gateways' ? 'bg-[#ea580c] text-white shadow-sm' : 'text-slate-600 hover:bg-slate-200'}`}>
           <Sliders size={13} /> Message settings
-        </button>
+        </button> */}
       </div>
 
       {activeTab === 'broadcasts' && (
