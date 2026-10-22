@@ -636,7 +636,7 @@ function App() {
           <img className="brand-crest" src="/assets/school-community.jpg" alt="Students learning together" />
           <div className="brand-titles">
             <h1>{SCHOOL_NAME}</h1>
-            <p>School community · Rubavu District, Rwanda</p>
+            <p> EXCELLENCE · SYSTEMATIZED</p>
           </div>
         </div>
 

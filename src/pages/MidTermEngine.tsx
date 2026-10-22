@@ -324,7 +324,7 @@ export default function MidTermEngine({ role, userId, notify }: Props) {
 
         const link = tokenInfo.url || buildParentLink(report, tokenInfo.token);
 
-        const smsMessage = `Dear ${student.parent_name || 'Parent'}, mid-term report for ${student.full_name} (${student.class_name}) is ready. Average: ${report.average}%. View: ${link} - G.S. Gacuba 2A`;
+        const smsMessage = `Mubyeyi, ${student.parent_name || 'Parent'}, indangamanota yo hagati mugihembwe ya ${student.full_name} (${student.class_name}) yasohotse. Impuzandengo (Average): ${report.average}%. Kuyi downloadinga, kanda hano: ${link} - G.S. Gacuba 2A`;
         const emailMessage = `Dear ${student.parent_name || 'Parent'},\n\nThe ${selectedPeriod.name} report for ${student.full_name} is ready.\nAverage: ${report.average}%\nSecure link: ${link}\nThis link expires on ${report.access_token_expires_at ? new Date(report.access_token_expires_at).toLocaleDateString() : 'in 30 days'}.\n\nG.S. Gacuba 2A`;
 
         try {

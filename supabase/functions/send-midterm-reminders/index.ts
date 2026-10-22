@@ -1,24 +1,3 @@
-
-/**
- * File: supabase/functions/send-midterm-reminders/index.ts
- *
- * Sends a reminder to the dean of studies on the official mid-term date.
- *
- * Required Supabase secrets:
- *   SUPABASE_URL
- *   SUPABASE_SERVICE_ROLE_KEY
- *   RESEND_API_KEY
- *   MIDTERM_REMINDER_CRON_SECRET
- *
- * Database RPCs to implement:
- *   get_midterm_reminder_targets()
- *     Returns: period_id, period_name, official_date,
- *              recipient_email, recipient_name
- *
- *   mark_midterm_reminder_sent({ p_period_id })
- *     Records that the reminder was successfully sent.
- */
-
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const corsHeaders = {
