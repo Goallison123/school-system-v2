@@ -27,7 +27,6 @@ type DispatchAction = 'SEND_NOW' | 'SAVE_DRAFT' | 'SCHEDULE';
 
 const REQUIRED_SCHOOL_FEES_RWF = 24000;
 
-
 function getRemainingBalanceRwf(contact: Contact): number {
   const raw = String(contact.fee_amount ?? contact.fees ?? '0').replace(/[^\d]/g, '');
   const paid = Number(raw);
@@ -76,6 +75,11 @@ type DeliveryResult = {
   detail: string;
 };
 
+// Helper to chunk array
+function chunkArray<T>(arr: T[], size: number): T[][] {
+  return Array.from({ length: Math.ceil(arr.length / size) }, (_, i) => arr.slice(i * size, i * size + size));
+}
+
 export default function NotificationModal({
   onClose,
   onSave,
@@ -99,6 +103,7 @@ export default function NotificationModal({
   const [scheduledDate, setScheduledDate] = useState('');
   const [error, setError] = useState('');
   const [isSending, setIsSending] = useState(false);
+  const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
   const [sendResult, setSendResult] = useState<{
     smsMessage?: string;
     smsCost?: string;
@@ -204,6 +209,7 @@ export default function NotificationModal({
     setIsSending(true);
     setError('');
     setSendResult(null);
+    setProgress({ done: 0, total: recipientCount });
 
     const deliveryResults: DeliveryResult[] = [];
 
@@ -215,46 +221,65 @@ export default function NotificationModal({
 
       if (useSMS) {
         const smsContacts = targetedContacts.filter((c) => c.phone && c.phone.replace(/\D/g, '').length >= 8);
-        for (const contact of smsContacts) {
-          try {
-            const personalized = personalizeMessage(message.trim(), contact);
-            const result = await sendAfricasTalkingBulkSMS({ to: [contact.phone], message: personalized });
-            const recipient = result.recipients?.[0];
-            const isOk = recipient?.status === 'Success' || recipient?.status === 'Queued' || recipient?.status === 'Sent';
-            if (isOk) {
-              smsSentCount++;
-              deliveryResults.push({ id: contact.id, name: contact.parent_name || contact.student_name, phone: contact.phone, channel: 'SMS', status: 'Delivered', detail: recipient.status });
-              if (result.totalCost) smsCostDetails.push(result.totalCost);
-            } else {
-              deliveryResults.push({ id: contact.id, name: contact.parent_name || contact.student_name, phone: contact.phone, channel: 'SMS', status: 'Failed', detail: recipient?.status || 'Rejected' });
+        // OPTIMIZED FOR THOUSANDS: send in parallel batches of 15 (not 1 by 1)
+        const BATCH_SIZE = 15;
+        const batches = chunkArray(smsContacts, BATCH_SIZE);
+        
+        for (const batch of batches) {
+          const results = await Promise.all(batch.map(async (contact) => {
+            try {
+              const personalized = personalizeMessage(message.trim(), contact);
+              const result = await sendAfricasTalkingBulkSMS({ to: [contact.phone], message: personalized });
+              const recipient = result.recipients?.[0];
+              const isOk = recipient?.status === 'Success' || recipient?.status === 'Queued' || recipient?.status === 'Sent';
+              return { contact, result, isOk, error: null };
+            } catch (err: unknown) {
+              return { contact, result: null, isOk: false, error: err };
             }
-          } catch (err: unknown) {
-            console.error('[SMS] Failed for', contact.id, contact.phone, err);
-            deliveryResults.push({ id: contact.id, name: contact.parent_name || contact.student_name, phone: contact.phone, channel: 'SMS', status: 'Failed', detail: 'Provider error' });
+          }));
+
+          for (const r of results) {
+            if (r.isOk && r.result) {
+              smsSentCount++;
+              deliveryResults.push({ id: r.contact.id, name: r.contact.parent_name || r.contact.student_name, phone: r.contact.phone, channel: 'SMS', status: 'Delivered', detail: r.result.recipients?.[0]?.status || 'Queued' });
+              if (r.result.totalCost) smsCostDetails.push(r.result.totalCost);
+            } else {
+              const detail = r.error instanceof Error ? r.error.message.slice(0,80) : 'Provider error';
+              deliveryResults.push({ id: r.contact.id, name: r.contact.parent_name || r.contact.student_name, phone: r.contact.phone, channel: 'SMS', status: 'Failed', detail });
+            }
           }
+          setProgress(prev => prev ? { done: prev.done + batch.length, total: prev.total } : null);
+          // Small pause to avoid AT rate limit (1 sec per 15)
+          await new Promise(res => setTimeout(res, 600));
         }
       }
 
       if (useEmail) {
         const emailContacts = targetedContacts.filter((c) => c.email && c.email.includes('@'));
-        for (const contact of emailContacts) {
-          try {
-            const personalized = personalizeMessage(message.trim(), contact);
-            const result = await sendBulkEmail({
-              recipients: [{ email: contact.email, name: contact.parent_name, studentName: contact.student_name }],
-              subject: title.trim(),
-              message: personalized,
-            });
-            if (result.totalSent > 0) {
-              emailSentCount++;
-              emailWasSimulated = emailWasSimulated || Boolean(result.isSimulated);
-              deliveryResults.push({ id: contact.id, name: contact.parent_name, channel: 'EMAIL', status: 'Delivered', detail: result.isSimulated ? 'Simulated' : 'Accepted' });
-            } else {
-              deliveryResults.push({ id: contact.id, name: contact.parent_name, channel: 'EMAIL', status: 'Failed', detail: 'Not accepted' });
+        // Email also batched
+        const emailBatches = chunkArray(emailContacts, 20);
+        for (const batch of emailBatches) {
+          const results = await Promise.all(batch.map(async (contact) => {
+            try {
+              const personalized = personalizeMessage(message.trim(), contact);
+              const result = await sendBulkEmail({
+                recipients: [{ email: contact.email, name: contact.parent_name, studentName: contact.student_name }],
+                subject: title.trim(),
+                message: personalized,
+              });
+              return { contact, result, ok: result.totalSent > 0 };
+            } catch {
+              return { contact, result: null, ok: false };
             }
-          } catch (err) {
-            console.error('[EMAIL] Failed for', contact.id, err);
-            deliveryResults.push({ id: contact.id, name: contact.parent_name, channel: 'EMAIL', status: 'Failed', detail: 'Error' });
+          }));
+          for (const r of results) {
+            if (r.ok && r.result) {
+              emailSentCount++;
+              emailWasSimulated = emailWasSimulated || Boolean(r.result.isSimulated);
+              deliveryResults.push({ id: r.contact.id, name: r.contact.parent_name, channel: 'EMAIL', status: 'Delivered', detail: r.result.isSimulated ? 'Simulated' : 'Accepted' });
+            } else {
+              deliveryResults.push({ id: r.contact.id, name: r.contact.parent_name, channel: 'EMAIL', status: 'Failed', detail: 'Not accepted' });
+            }
           }
         }
       }
@@ -263,9 +288,8 @@ export default function NotificationModal({
       const failedCount = deliveryResults.filter((r) => r.status === 'Failed').length;
 
       if (deliveredCount === 0) {
-        console.error('All deliveries failed:', deliveryResults);
-        setError(`No messages were delivered. ${failedCount} contact(s) failed. Please check phone numbers and provider credentials.`);
-        setSendResult({ smsMessage: `0 delivered, ${failedCount} failed`, results: deliveryResults });
+        setError(`No messages were delivered. ${failedCount} contact(s) failed. Invalid numbers or provider error. Check console.`);
+        setSendResult({ smsMessage: `0 delivered, ${failedCount} failed`, results: deliveryResults.slice(0,100) });
         return;
       }
 
@@ -286,7 +310,7 @@ export default function NotificationModal({
         smsMessage: useSMS ? `${smsSentCount} SMS delivered, ${deliveryResults.filter(r=>r.channel==='SMS'&&r.status==='Failed').length} failed` : undefined,
         smsCost: smsCostDetails.join(' + ') || undefined,
         emailMessage: useEmail ? (emailWasSimulated ? `${emailSentCount} email simulated` : `${emailSentCount} email delivered`) : undefined,
-        results: deliveryResults,
+        results: deliveryResults.slice(0,200), // cap display to 200 for performance
       });
 
       const deliveredIds = [...new Set(deliveryResults.filter((r) => r.status === 'Delivered').map((r) => r.id))];
@@ -304,9 +328,10 @@ export default function NotificationModal({
       );
     } catch (err: unknown) {
       console.error('Dispatch fatal error', err);
-      setError('We couldn’t send the messages. Please try again. If it persists, contact the IT.');
+      setError('We couldn’t send the messages. Please try again.');
     } finally {
       setIsSending(false);
+      setProgress(null);
     }
   }
 
@@ -322,12 +347,19 @@ export default function NotificationModal({
         <div className="system-modal-header flex items-center justify-between px-5 py-3.5 bg-[#3b2314] text-white border-b-2 border-[#ea580c]">
           <div>
             <h2 id="notification-modal-title" className="text-sm font-bold uppercase tracking-wider">Send Parent Notice</h2>
-            <p className="text-[11px] text-[#fed7aa] mt-0.5">SMS and/or email</p>
+            <p className="text-[11px] text-[#fed7aa] mt-0.5">SMS and/or email {progress ? `(${progress.done}/${progress.total})` : ''}</p>
           </div>
           <button type="button" aria-label="Close dialog" onClick={onClose} className="text-white/80 hover:text-white p-1 rounded hover:bg-white/10"><X size={18} /></button>
         </div>
 
         <div className="flex-1 overflow-y-auto p-5 space-y-4 text-xs">
+          {isSending && progress && (
+            <div className="p-3 bg-amber-50 border border-amber-200 rounded">
+              <div className="flex items-center gap-2 text-amber-900"><Loader2 size={16} className="animate-spin" /><span className="font-semibold">Sending {progress.done} / {progress.total}...</span></div>
+              <div className="w-full bg-amber-100 h-2 rounded mt-2 overflow-hidden"><div className="bg-amber-600 h-2" style={{ width: `${Math.round((progress.done/progress.total)*100)}%` }} /></div>
+            </div>
+          )}
+
           {sendResult && (
             <div className="p-3 bg-slate-50 border rounded text-slate-900">
               <div className="flex items-start gap-2.5">
@@ -388,8 +420,7 @@ export default function NotificationModal({
             </div>
             <textarea id="broadcast-message" ref={messageRef} rows={3} value={message} onChange={(event) => setMessage(event.target.value)} placeholder="Enter message for parents..." className="form-input w-full font-sans text-xs resize-y" />
             <div className="mt-1 flex items-center justify-between text-[11px] text-slate-500">
-              <div className="flex items-center gap-3 flex-wrap"><span className="font-mono">Length: {message.length} chars</span>{useSMS && (<span className="text-emerald-800 font-medium flex items-center gap-1"><DollarSign size={12} />Estimated: ~RWF {smsCostEstimate.estimatedCostRwf}</span>)}</div>
-              <span className="text-[10px] text-slate-400 font-mono">Per-recipient </span>
+              <div className="flex items-center gap-3 flex-wrap"><span className="font-mono">Length: {message.length} chars</span>{useSMS && (<span className="text-emerald-800 font-medium flex items-center gap-1"><DollarSign size={12} />Estimated: ~RWF {smsCostEstimate.estimatedCostRwf} for {recipientCount}</span>)}</div>
             </div>
           </div>
 
@@ -436,7 +467,7 @@ export default function NotificationModal({
           <div className="text-[11px] text-slate-500">{actionType === 'SEND_NOW' ? (<span>Sending to <strong className="text-slate-800">{recipientCount}</strong> parent contact(s)</span>) : actionType === 'SCHEDULE' ? (<span>Will save schedule for {scheduledDate || 'selected date'}</span>) : (<span>Will save as draft</span>)}</div>
           <div className="flex items-center gap-2 shrink-0">
             <button type="button" onClick={onClose} disabled={isSending} className="btn-enterprise-cancel">Cancel</button>
-            <button type="button" disabled={!canSubmit} onClick={() => void handleExecuteDispatch()} className="btn-enterprise-save flex items-center gap-1.5">{isSending ? (<><Loader2 size={13} className="animate-spin" />Sending...</>) : actionType === 'SEND_NOW' ? (<><Send size={13} />Send notice</>) : actionType === 'SCHEDULE' ? (<><Clock3 size={13} />Save schedule</>) : (<><Check size={13} />Save draft</>)}</button>
+            <button type="button" disabled={!canSubmit} onClick={() => void handleExecuteDispatch()} className="btn-enterprise-save flex items-center gap-1.5">{isSending ? (<><Loader2 size={13} className="animate-spin" />{progress ? `${progress.done}/${progress.total}` : 'Sending...'}</>) : actionType === 'SEND_NOW' ? (<><Send size={13} />Send notice</>) : actionType === 'SCHEDULE' ? (<><Clock3 size={13} />Save schedule</>) : (<><Check size={13} />Save draft</>)}</button>
           </div>
         </div>
       </div>
