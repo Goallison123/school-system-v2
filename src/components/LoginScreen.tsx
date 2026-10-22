@@ -23,8 +23,8 @@ export default function LoginScreen({ onLogin }: { onLogin: (email: string, pass
     <div className="min-h-screen bg-[#faf8f5] flex flex-col justify-between p-4 sm:p-6 font-sans">
       {/* Top minimal institutional strip */}
       <div className="w-full max-w-5xl mx-auto flex items-center justify-between text-xs text-amber-950/70 py-2 border-b border-amber-900/10">
-        <span className="font-semibold text-[#78350f]">REPUBLIC OF RWANDA · MINISTRY OF EDUCATION</span>
-        <span className="text-stone-600">Rubavu District · Western Province</span>
+        <span className="font-semibold text-[#78350f]">EXCELLENCE · SYSTEMIZED</span>
+        <span className="text-stone-600">GS GACUBA 2A SCHOOL SYSTEM</span>
       </div>
 
       {/* Center login dialog */}
@@ -102,7 +102,7 @@ export default function LoginScreen({ onLogin }: { onLogin: (email: string, pass
 
       {/* Footer */}
       <footer className="w-full max-w-5xl mx-auto text-center text-xs text-[#78350f] py-4">
-        All Rights Reserved by G.S Gacuba 2A · Republic of Rwanda.
+        All Rights Reserved by G.S Gacuba 2A
       </footer>
     </div>
   );
