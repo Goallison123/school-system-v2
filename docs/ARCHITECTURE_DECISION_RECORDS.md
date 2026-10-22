@@ -7,7 +7,7 @@ This document records the architectural, technical, and operational decisions go
 
 ### Index of Records
 - **ADR-001:** Single Page Application (React 18 + Vite) Architecture over Django/Python Monolith
-- **ADR-002:** PostgreSQL Row-Level Security (RLS) as the Primary Security & Permission Boundary
+- **ADR-002:** PostgreSQL through supabase Row-Level Security (RLS) as the Primary Security & Permission Boundary
 - **ADR-003:** Dedicated `public.users` Profile Table with Strict School Role Enum
 - **ADR-004:** Decoupled Parent Contact Snapshotting in Academic Reports (`midterm_report_contacts`)
 - **ADR-005:** Database-Triggered Automated Incremental Report Card Compilation
@@ -116,7 +116,7 @@ Teachers are granted access to read historical report rows in `public.midterm_re
 In traditional school portals, the Dean of Studies must manually initiate report compilation at the end of every testing window, causing bottlenecks and server timeouts during peak grading periods.
 
 #### Decision
-Implement a database trigger `auto_compile_midterm_on_mark_save` on `public.midterm_assessment_marks`. When a mark is saved, the trigger queries `public.midterm_subjects` to determine how many enabled subjects exist for the student's class stream. If and only if every enabled subject has received a valid mark (including `0`), the database automatically compiles the report snapshot, calculates the arithmetic average, maps REB letter grades, and inserts the report record.
+Implement a database trigger `auto_compile_midterm_on_mark_save` on `public.midterm_assessment_marks`. When a mark is saved, the trigger queries `public.midterm_subjects` to determine how many enabled subjects exist for the student's class stream. If and only if every enabled subject has received a valid mark (including `0`), the database automatically compiles the report snapshot, calculates the arithmetic average, maps REB, probably NESA letter grades, and inserts the report record.
 
 #### Consequences
 - **Positive:**
@@ -184,7 +184,7 @@ Directly invoking third-party email APIs from within client components or databa
 
 #### Decision
 Adopt the **Transactional Outbox Pattern**:
-1. When official examination dates are scheduled, PostgreSQL triggers insert notification tasks into `public.midterm_notification_outbox` in the same atomic transaction.
+1. When official mid-term assessment dates are scheduled, PostgreSQL triggers insert notification tasks into `public.midterm_notification_outbox` in the same atomic transaction.
 2. A separate serverless Supabase Deno Edge Function (`dispatch-midterm-emails`) executes periodically, reads pending records (`delivered_at IS NULL`), communicates with the Resend API, and records the `delivered_at` timestamp.
 
 #### Consequences
