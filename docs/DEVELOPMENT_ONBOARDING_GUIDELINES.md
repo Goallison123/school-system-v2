@@ -70,7 +70,7 @@ npm run build
 
 ---
 
-## 3. Code Style & Engineering Standards
+## 3. Code Style & Engineering Standards (In addition to sybella systems frontend, backend and software engineering guides written by Alexis and Prashant (Ask if no access to them today))
 
 ### 3.1 TypeScript & Type Safety
 - **Strict Mode:** Strict type checking is enforced in `tsconfig.app.json`.
