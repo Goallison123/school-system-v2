@@ -102,7 +102,7 @@ src/
 │   ├── modals/
 │   │   ├── AddContactModal.tsx      # Manual contact record addition modal
 │   │   ├── ContentModal.tsx         # News/Gallery CMS item authoring modal
-│   │   ├── HelpModal.tsx            # Staff onboarding and documentation modal
+│   │   ├── HelpModal.tsx            # Staff onboarding and documentation modal // We still got more tasks on this (we got to make it available for the IT)
 │   │   ├── ImportModal.tsx          # Contact CSV ingestion dialog
 │   │   ├── NotificationModal.tsx    # SMS/Email multi-channel campaign composer
 │   │   └── SettingsModal.tsx        # Institution profile and channel preference modal

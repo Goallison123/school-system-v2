@@ -9,8 +9,8 @@ const corsHeaders = {
 };
 
 const defaultApiUrl =
-      'https://api.africastalking.com/version1/messaging'
-  // 'https://api.sandbox.africastalking.com/version1/messaging';
+     // 'https://api.africastalking.com/version1/messaging'
+  'https://api.sandbox.africastalking.com/version1/messaging';
 
 const allowedApiUrls = new Set([
   'https://api.sandbox.africastalking.com/version1/messaging',
@@ -131,7 +131,7 @@ Deno.serve(async (request) => {
     return jsonResponse(
       {
         error:
-          'Text messaging is not ready. Ask the school administrator to check the server SMS settings.',
+          'Text messaging is not ready. Ask the school administrator to diagnose the platform.',
       },
       503,
     );

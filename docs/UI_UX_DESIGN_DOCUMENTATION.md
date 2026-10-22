@@ -3,7 +3,7 @@
 
 - **Design Classification:** Administrative & Academic Web Interface
 - **Methodology Notice:** Physical Paper Wireframes & Whiteboard Brainstorming System
-- **Figma Status:** **No Figma Prototype Available**. In accordance with the school's rapid prototyping and engineering process, all early interface concepts, layout grids, and interactive flows were conceptualized on physical paper wireframes and whiteboard brainstorming sessions, then implemented directly into responsive production code using Tailwind CSS.
+- **Figma Status:** **No Figma Prototype Available**. In accordance with the school's rapid prototyping and engineering process, all early interface concepts, layout grids, and interactive flows were conceptualized on physical paper wireframes and whiteboard brainstorming sessions, then implemented directly into responsive production code using Tailwind CSS. Further design changes were facilitated with Artificial intelligence tools and the sybella tech team. we will continuously work on ensuring the platform interface is professional, administrative and modern.
 
 ---
 
@@ -56,7 +56,7 @@ Below are the structural wireframes developed from our physical brainstorming se
 ```text
 +---------------------------------------------------------------------------------+
 |                                                                                 |
-|                       [ School Community Photograph ]                           |
+[ School logo, currently a School Community Photograph ]                           |
 |                                G.S Gacuba 2A                                    |
 |                           School staff sign in                                 |
 |                                                                                 |
@@ -111,14 +111,14 @@ Below are the structural wireframes developed from our physical brainstorming se
 | [ ] Students     |  Academic grading, subject configuration, and report cards   |
 | [x] Mid-Term     |                                                              |
 | [ ] Users & Roles|  +---------------------------------------------------------+ |
-| [ ] Notifications|  | Select Class: [ P2 A                v ]                     | |
+| [ ] Notifications|  | Select Class: [ S2 A                v ]                     | |
 | [ ] Contacts     |  | Period:       [ 2026 Mid-Term       v ]                     | |
 | [ ] Website CMS  |  | Official Exam Date: [ 2026-11-16 ] [ Save Date ]        | |
 | [ ] Inquiries    |  +---------------------------------------------------------+ |
 |                  |                                                              |
 |                  |  [ + Subject Configuration ] [ Batch Compile Reports ]       |
 |                  |                                                              |
-|                  |  STUDENT ASSESSMENT MATRIX (Class: P2 A)                     |
+|                  |  STUDENT ASSESSMENT MATRIX (Class: S2 A)                     |
 |                  |  +---------------------------------------------------------+ |
 |                  |  | Pupil Name      | Math  | Eng   | Kiny  | Avg   | Status| |
 |                  |  |-----------------+-------+-------+-------+-------+-------| |
@@ -153,9 +153,9 @@ Below are the structural wireframes developed from our physical brainstorming se
 |                  |  +---------------------------------------------------------+ |
 |                  |  | Full Name    | Parent Name  | Phone / Email  | Class|Fee| |
 |                  |  |--------------+--------------+----------------+-----+---| |
-|                  |  | (I) Ineza D. | Jean Claude  | +250 788 123.. | P2 A|(P)| |
-|                  |  | (N) Patrick N| Marie Claire | +250 790 987.. | P4 A|(!)| |
-|                  |  | (E) Eric H.  | Claudine N.  | +250 781 223.. | P5 A|(X)| |
+|                  |  | (I) Ineza D. | Jean Claude  | +250 788 123.. | S2 A|(P)| |
+|                  |  | (N) Patrick N| Marie Claire | +250 790 987.. | S4 ARH|(!)| |
+|                  |  | (E) Eric H.  | Claudine N.  | +250 781 223.. | S5 ARH|(X)| |
 |                  |  +---------------------------------------------------------+ |
 |                  |                                                              |
 |                  |  Showing 6 students - Click row to open details drawer       |
@@ -167,8 +167,8 @@ Below are the structural wireframes developed from our physical brainstorming se
 | | Full Name:      [ Ineza Divine                                            ] | |
 | | Parent Name:    [ Jean Claude Uwase                                       ] | |
 | | Email Address:  [ divine.ineza@gmail.com   ] Phone: [ +250 788 123 456    ] | |
-| | Class:          [ P2 A                   v ] Status:[ Paid              v ] | |
-| | Fees Paid:      [ 145,000 RWF                                             ] | |
+| | Class:          [ S2 A                   v ] Status:[ Paid              v ] | |
+| | Fees Paid:      [ 24,000 RWF                                             ] | |
 | |                                                                             | |
 | | Registry ID: STU-101   |   Last Updated: Today                              | |
 | |                                                                             | |
@@ -221,7 +221,7 @@ Below are the structural wireframes developed from our physical brainstorming se
   [Teacher logs in]
           |
           v
-  Selects Assigned Class (e.g. "P2 A")
+  Selects Assigned Class (e.g. "S2 A")
           |
           v
   Inputs Marks (0-100) for Subject

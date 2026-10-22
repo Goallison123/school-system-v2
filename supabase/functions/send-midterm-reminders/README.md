@@ -11,13 +11,13 @@ The reminder asks the dean to review marks and generate reports. Generating repo
 
 - A Supabase project
 - Supabase CLI
-- A verified sender domain or email address in Resend
+- A verified sender domain or email address in Resend @Prashant will be working on connecting this system to emailing services.
 - The database RPCs described below
 - A scheduler that can send an authenticated POST request
 
 ## Required Supabase secrets
 
-Set these secrets in your Supabase project:
+Set these secrets in our Supabase project:
 
 - `SUPABASE_URL`
 - `SUPABASE_SERVICE_ROLE_KEY`
@@ -30,7 +30,7 @@ Never place the service-role key or scheduler secret in frontend code.
 
 ## Database requirements
 
-Implement these two database RPCs using your actual schema.
+Implement these two database RPCs using our actual schema.
 
 ### `get_midterm_reminder_targets()`
 
@@ -64,26 +64,26 @@ Set the required secrets with the Supabase CLI:
 
 ```bash
 supabase secrets set \
-  RESEND_API_KEY="your-resend-api-key" \
+  RESEND_API_KEY="our-resend-api-key" \
   MIDTERM_REMINDER_CRON_SECRET="your-long-random-secret" \
   MIDTERM_REMINDER_FROM_EMAIL="verified-sender@example.com" \
   MIDTERM_SCHOOL_NAME="G.S Gacuba 2A"
 ```
 
-`SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` are commonly available to Supabase Edge Functions automatically. If your environment does not provide them, configure them securely through your deployment setup.
+`SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` are commonly available to Supabase Edge Functions automatically.
 
 ## Schedule
 
 Configure a daily scheduler to send an HTTP POST request to:
 
 ```text
-https://YOUR_PROJECT_REF.supabase.co/functions/v1/send-midterm-reminders
+https://PROJECT_REF.supabase.co/functions/v1/send-midterm-reminders
 ```
 
 Include this header:
 
 ```text
-x-cron-secret: YOUR_MIDTERM_REMINDER_CRON_SECRET
+x-cron-secret: OUR_MIDTERM_REMINDER_CRON_SECRET
 ```
 
 Use a scheduler that runs in the school's intended timezone. Rwanda uses Africa/Kigali (UTC+2). Schedule the function after midnight in Kigali so the date-based query finds periods due that day.

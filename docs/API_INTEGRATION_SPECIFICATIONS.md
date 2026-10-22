@@ -41,7 +41,7 @@ Retrieves student profiles. Restricted by RLS to `dean_of_studies`, `headteacher
 
 - **Query Parameters:**
   - `select`: Column projection (`id, registration_number, full_name, class_name, stream, parent_name, email, phone, fee_status, fee_amount`).
-  - `class_name`: Filter by class (e.g. `eq.P2 A`).
+  - `class_name`: Filter by class (e.g. `eq.S2 A`).
   - `fee_status`: Filter by status (e.g. `eq.Paid`, `eq.Unpaid`).
   - `order`: Sort column (e.g. `class_name.asc,full_name.asc`).
 
@@ -52,33 +52,33 @@ Retrieves student profiles. Restricted by RLS to `dean_of_studies`, `headteacher
     "id": "71000000-0000-4000-8000-000000000001",
     "registration_number": "STU-101",
     "full_name": "INEZA Divine",
-    "class_name": "P2 A",
+    "class_name": "S2 A",
     "stream": "A",
     "parent_name": "Jean Claude Uwase",
     "email": "divine.ineza@gmail.com",
     "phone": "+250788123456",
     "fee_status": "Paid",
-    "fee_amount": "145,000 RWF",
+    "fee_amount": "24,000 RWF",
     "created_at": "2026-10-12T08:30:00Z"
   }
 ]
 ```
 
 #### `POST /rest/v1/school_students`
-Registers a new pupil. Permitted only for `dean_of_studies` and `it`.
+Registers a new student. Permitted only for `dean_of_studies` and `it`.
 
 - **Request Body:**
 ```json
 {
   "registration_number": "STU-107",
   "full_name": "MUGISHA Jean Claude",
-  "class_name": "P1 A",
+  "class_name": "S1 A",
   "stream": "A",
   "parent_name": "Jean Bosco Mugisha",
   "email": "jbmugisha@gmail.com",
   "phone": "+250780000111",
   "fee_status": "Paid",
-  "fee_amount": "120,000 RWF"
+  "fee_amount": "24,000 RWF"
 }
 ```
 - **Response `201 Created`:** Returns the committed record.
@@ -88,7 +88,7 @@ Registers a new pupil. Permitted only for `dean_of_studies` and `it`.
 ### 2.2 Teacher-Restricted Register View
 
 #### `GET /rest/v1/teacher_student_register`
-Read-only view for teachers. PostgreSQL RLS returns only pupil names and streams for classes assigned to the requesting teacher.
+Read-only view for teachers. PostgreSQL RLS returns only studeny names and streams for classes assigned to the requesting teacher.
 
 - **Response `200 OK`:**
 ```json
@@ -96,7 +96,7 @@ Read-only view for teachers. PostgreSQL RLS returns only pupil names and streams
   {
     "id": "71000000-0000-4000-8000-000000000001",
     "full_name": "INEZA Divine",
-    "class_name": "P2 A",
+    "class_name": "S2 A",
     "stream": "A"
   }
 ]
@@ -111,7 +111,7 @@ Read-only view for teachers. PostgreSQL RLS returns only pupil names and streams
 Retrieves marks for a class stream and examination period.
 
 - **Query Parameters:**
-  - `class_name=eq.P2 A`
+  - `class_name=eq.S2 A`
   - `period=eq.2026 Mid-Term`
   - `select=*,subject:midterm_subjects(*)`
 
@@ -122,7 +122,7 @@ Retrieves marks for a class stream and examination period.
     "id": "74000000-0000-4000-8000-000000000001",
     "student_id": "71000000-0000-4000-8000-000000000001",
     "subject_id": "72000000-0000-4000-8000-000000000001",
-    "class_name": "P2 A",
+    "class_name": "S2 A",
     "period": "2026 Mid-Term",
     "mark": 85.00,
     "entered_by": "00000000-0000-0000-0000-000000000003",
@@ -229,13 +229,13 @@ Executes an atomic batch insert of validated student records.
     {
       "registration_number": "REG-2026-101",
       "full_name": "Kwizera Yves",
-      "class_name": "P6 A",
+      "class_name": "S6 A",
       "stream": "A",
       "parent_name": "Aline Uwimbabazi",
       "email": "kwizera.yves@gmail.com",
       "phone": "+250791444333",
       "fee_status": "Partial",
-      "fee_amount": "90,000 RWF"
+      "fee_amount": "20,000 RWF"
     }
   ]
 }
@@ -318,7 +318,7 @@ Processes undelivered rows in `public.midterm_notification_outbox`. Triggered on
 
 ## 6. External SMS Gateway Integration Contract
 
-SMS campaigns are stored in `public.sms_campaign_dispatches` and `public.midterm_sms_dispatches`. External telecommunication providers (e.g., Africa's Talking / Twilio / InfoBip) communicate using this standard gateway protocol:
+SMS campaigns are stored in `public.sms_campaign_dispatches` and `public.midterm_sms_dispatches`. External telecommunication providers, AT for now, communicate using this standard gateway protocol: 
 
 ### 6.1 Outbound SMS Dispatch Payload
 ```json
