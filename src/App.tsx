@@ -42,7 +42,6 @@ import MaintenanceBanner, { MAINTENANCE_MODE } from './layout/MaintenanceBanner'
 
 const MidTermEngine = React.lazy(() => import('@/pages/MidTermEngine'));
 
-// ---------- Helpers ----------
 function mapStudentToParentContact(row: Record<string, unknown>): Contact {
   return {
     id: String(row.id),
@@ -120,7 +119,6 @@ function AccessNotice({
   );
 }
 
-// ---------- Main App ----------
 function App() {
   const [authed, setAuthed] = useState(() => sessionStorage.getItem(AUTH_KEY) === 'true');
   const [user, setUser] = useState<{ id?: string; email?: string | null; full_name?: string | null; role?: string | null } | null>(null);
@@ -142,7 +140,6 @@ function App() {
   const [showNotifications, setShowNotifications] = useState(false);
   const [toast, setToast] = useState('');
 
-  // Load data
   useEffect(() => {
     async function loadData() {
       if (!authed || !user?.role || !supabase) {
@@ -152,7 +149,6 @@ function App() {
       const deanRole = ['dean_of_studies', 'it'].includes(user.role);
       const headRole = user.role === 'headteacher';
       setLoading(true);
-
       try {
         const [studentsResult, campaignsResult, galleryResult, newsResult, inquiriesResult, settingsResult] = await Promise.all([
           deanRole || headRole ? supabase.from('school_students').select('id, parent_name, full_name, class_name, phone, email, fee_amount, created_at').order('created_at', { ascending: false }).limit(5000) : { data: [] },
@@ -162,7 +158,6 @@ function App() {
           deanRole ? supabase.from('school_inquiries').select('*').order('created_at', { ascending: false }).limit(50) : { data: [] },
           deanRole ? supabase.from('workspace_settings').select('*').limit(1) : { data: [] },
         ]);
-
         if (deanRole || headRole) setContacts((studentsResult?.data ?? []).map((r) => mapStudentToParentContact(r as any)));
         if (campaignsResult?.data) setCampaigns(campaignsResult.data as Campaign[]);
         if (galleryResult?.data && newsResult?.data) setContent([...(galleryResult.data as Content[]), ...(newsResult.data as Content[])]);
@@ -177,7 +172,6 @@ function App() {
     void loadData();
   }, [authed, user?.role]);
 
-  // Realtime contacts
   useEffect(() => {
     if (!supabase || !['dean_of_studies', 'it'].includes(user?.role ?? '')) return;
     const channel = supabase
@@ -204,56 +198,27 @@ function App() {
     );
   }
 
-  // --- SMS / Campaigns: Standardized ---
   async function saveCampaign(campaign: Omit<Campaign, 'id' | 'created_at'>, dispatch: { fingerprint: string; recipientIds: string[] }) {
     if (!supabase) return notify('Service unavailable');
     if (!(isDean || role === 'headteacher')) return notify('Unauthorized');
-
     try {
-      // Prevent duplicate broadcasts
       const { data: existing } = await supabase.from('sms_campaign_dispatches').select('id').eq('fingerprint', dispatch.fingerprint).maybeSingle();
-      if (existing) {
-        notify('This broadcast already exists');
-        return;
-      }
-
-      // Safe sample to avoid PG index bloat
+      if (existing) { notify('This broadcast already exists'); return; }
       const sample = dispatch.recipientIds.slice(0, 20);
-
-      const { data: ledger, error: ledgerError } = await supabase
-        .from('sms_campaign_dispatches')
-        .insert({ fingerprint: dispatch.fingerprint, recipient_ids: sample, created_by: user?.id ?? null })
-        .select('id')
-        .maybeSingle();
-
+      const { data: ledger, error: ledgerError } = await supabase.from('sms_campaign_dispatches').insert({ fingerprint: dispatch.fingerprint, recipient_ids: sample, created_by: user?.id ?? null }).select('id').maybeSingle();
       if (ledgerError) {
         if (ledgerError.code === '23505') return notify('Broadcast already recorded');
         throw ledgerError;
       }
-
-      // Save campaign with clear SMS status
-      const { data, error } = await supabase
-        .from('notification_campaigns')
-        .insert({
-          ...campaign,
-          recipient_count: dispatch.recipientIds.length,
-          channels: campaign.channels?.length ? campaign.channels : ['SMS'],
-        })
-        .select()
-        .maybeSingle();
-
+      const { data, error } = await supabase.from('notification_campaigns').insert({ ...campaign, recipient_count: dispatch.recipientIds.length, channels: campaign.channels?.length ? campaign.channels : ['SMS'] }).select().maybeSingle();
       if (error || !data) {
         if (ledger) await supabase.from('sms_campaign_dispatches').delete().eq('id', ledger.id);
         return notify('Failed to save broadcast');
       }
-
-      if (ledger) {
-        await supabase.from('sms_campaign_dispatches').update({ campaign_id: data.id }).eq('id', ledger.id);
-      }
-
+      if (ledger) await supabase.from('sms_campaign_dispatches').update({ campaign_id: data.id }).eq('id', ledger.id);
       setCampaigns((prev) => [data as Campaign, ...prev]);
       setShowNotification(false);
-      notify(campaign.status === 'Sent' || campaign.status === 'Partially Sent' ? `SMS broadcast recorded: ${dispatch.recipientIds.length} recipients` : `Draft saved for ${dispatch.recipientIds.length} parents`);
+      notify(campaign.status === 'Sent' || campaign.status === 'Partially Sent' ? `SMS broadcast recorded: ${dispatch.recipientIds.length} recipients` : `Draft saved`);
     } catch (e) {
       console.error(e);
       notify('Could not save broadcast');
@@ -332,15 +297,20 @@ function App() {
 
   const role = parseSchoolRole(user?.role);
   const isDean = ['dean_of_studies', 'it'].includes(role);
-  const allowedPaths = role === 'teacher' ? ['/overview', '/midterm', '/students'] : role === 'headteacher' ? ['/overview', '/midterm', '/campaigns'] : role === 'dean_of_studies' ? navItems.filter((i) => i.path !== '/users').map((i) => i.path) : role === 'it' ? navItems.map((i) => i.path) : [];
+
+  // UPDATED: Dean can now access Staff page for class assignments
+  const allowedPaths = 
+    role === 'teacher' ? ['/overview', '/midterm', '/students'] 
+    : role === 'headteacher' ? ['/overview', '/midterm', '/campaigns'] 
+    : role === 'dean_of_studies' ? ['/overview', '/students', '/midterm', '/users', '/campaigns', '/contacts', '/content', '/inquiries'] 
+    : role === 'it' ? navItems.map((i) => i.path) 
+    : [];
+
   const visibleNavItems = navItems.filter((i) => allowedPaths.includes(i.path));
   const homePath = allowedPaths.includes('/overview') ? '/overview' : '/midterm';
   const roleName = schoolRoleLabel(role);
-
   const restrictedPage = <AccessNotice roleName={roleName} homePath={homePath} availablePages={visibleNavItems.map((i) => ({ label: i.label, path: i.path }))} />;
-
   const overviewElement = role === 'teacher' ? <TeacherOverview teacherName={user?.full_name || 'Teacher'} onNavigate={(p) => navigate(p)} /> : <HeadmasterOverview contacts={contacts} campaigns={campaigns} content={content} inquiries={inquiries} adminName={user?.full_name || settings?.admin_name || 'Staff'} adminRole={role} onNavigate={(v) => navigate(navItems.find((i) => i.id === v)?.path ?? '/overview')} />;
-
   const roleAwareOverview = allowedPaths.includes('/overview') ? overviewElement : restrictedPage;
 
   async function handleLogin(email: string, password: string) {
@@ -386,7 +356,6 @@ function App() {
   return (
     <div className={`system-shell ${MAINTENANCE_MODE ? 'pt-[40px]' : ''}`}>
       <MaintenanceBanner />
-
       <div className="top-utility-strip">
         <div className="user-welcome">Welcome, <strong>{user?.full_name || user?.email}</strong> ({SCHOOL_NAME})</div>
         <div className="utility-actions">
@@ -438,7 +407,8 @@ function App() {
           <Route path="/overview" element={roleAwareOverview} />
           <Route path="/students" element={allowedPaths.includes('/students') ? (role === 'teacher' ? <TeacherStudentRegister /> : <Students />) : restrictedPage} />
           <Route path="/midterm" element={allowedPaths.includes('/midterm') ? <Suspense fallback={<LoadingScreen />}><MidTermEngine role={role} userId={user?.id} notify={notify} /></Suspense> : restrictedPage} />
-          <Route path="/users" element={allowedPaths.includes('/users') ? <UserManagement /> : restrictedPage} />
+          {/* UPDATED: Dean can access but UserManagement will limit her to teacher class assignments only */}
+          <Route path="/users" element={allowedPaths.includes('/users') ? <UserManagement currentRole={role} currentUserId={user?.id} /> : restrictedPage} />
           <Route path="/campaigns" element={allowedPaths.includes('/campaigns') ? <Campaigns campaigns={campaigns} contacts={contacts} onCompose={() => setShowNotification(true)} onDelete={isDean ? deleteCampaign : () => notify('Only Dean can delete')} notify={notify} /> : restrictedPage} />
           <Route path="/contacts" element={allowedPaths.includes('/contacts') ? <Contacts contacts={contacts} onExport={exportContacts} /> : restrictedPage} />
           <Route path="/content" element={allowedPaths.includes('/content') ? <ContentManager content={content} onAdd={() => { setEditingContent(null); setShowContentForm(true); }} onEdit={(item) => { setEditingContent(item); setShowContentForm(true); }} onDelete={deleteContent} onPublish={publishContent} /> : restrictedPage} />

@@ -62,6 +62,7 @@ export default function MidTermEngine({ role, userId, notify }: Props) {
 
   const [selectedPeriodId, setSelectedPeriodId] = useState('');
   const [selectedClass, setSelectedClass] = useState('');
+  const [teacherAssignments, setTeacherAssignments] = useState<string[]>([]);
   const [search, setSearch] = useState('');
   const [marksPage, setMarksPage] = useState(1);
   const [reportsPage, setReportsPage] = useState(1);
@@ -82,7 +83,19 @@ export default function MidTermEngine({ role, userId, notify }: Props) {
   const isFinalized = selectedPeriod?.status === 'finalized';
   const isDean = role === 'dean_of_studies' || role === 'it';
 
-  const classes = useMemo(() => [...new Set(students.map((s) => s.class_name))].filter(Boolean).sort(), [students]);
+    const classes = useMemo(() => {
+    const allFromStudents = [...new Set(students.map((s) => s.class_name))].filter(Boolean).sort() as string[];
+    if (role === 'teacher') {
+      // If teacher has assignments, show those assignments even if no students yet in those classes
+      // Merge both so teacher sees assigned classes
+      if (teacherAssignments.length) {
+        return [...new Set([...teacherAssignments, ...allFromStudents.filter(c => teacherAssignments.includes(c))])].sort();
+      }
+      return [];
+    }
+    return allFromStudents;
+  }, [students, role, teacherAssignments]);
+
   const classStudents = useMemo(() => {
     const base = students.filter((s) => s.class_name === selectedClass);
     const q = search.trim().toLowerCase();
@@ -141,9 +154,29 @@ export default function MidTermEngine({ role, userId, notify }: Props) {
     }
   }, [selectedPeriodId]);
 
-  useEffect(() => { void refresh(); }, [refresh]);
+    useEffect(() => { void refresh(); }, [refresh]);
+  
+  useEffect(() => {
+    async function loadAssignments() {
+      if (!supabase || !userId) return;
+      if (role === 'teacher') {
+        const { data } = await supabase.from('teacher_class_assignments').select('class_name').eq('teacher_user_id', userId);
+        setTeacherAssignments((data ?? []).map((d: any) => d.class_name));
+      } else {
+        setTeacherAssignments([]);
+      }
+    }
+    void loadAssignments();
+  }, [userId, role]);
+
   useEffect(() => { setMarksPage(1); }, [selectedClass, search, selectedPeriodId]);
-  useEffect(() => { if (!selectedClass && classes[0]) setSelectedClass(classes[0]); }, [classes, selectedClass]);
+  
+  useEffect(() => {
+    if (!selectedClass && classes[0]) setSelectedClass(classes[0]);
+    if (selectedClass && classes.length && !classes.includes(selectedClass)) {
+      setSelectedClass(classes[0]);
+    }
+  }, [classes, selectedClass]);
 
   // Subjects CRUD
   async function addSubject() {
@@ -434,6 +467,11 @@ export default function MidTermEngine({ role, userId, notify }: Props) {
             <select value={selectedClass} onChange={(e) => setSelectedClass(e.target.value)} className="mt-1 w-full rounded border px-2 py-1.5 text-sm">
               {classes.map((c) => <option key={c} value={c}>{c}</option>)}
             </select>
+              {role === 'teacher' && !classes.length && (
+              <div className="mt-2 rounded bg-amber-50 p-2 text-[11px] text-amber-800">
+                No class assigned to you. Ask IT to assign in User Management.
+              </div>
+            )}
             <div className="relative mt-3">
               <Search size={12} className="absolute left-2 top-2.5 text-stone-400" />
               <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search student" className="w-full rounded border pl-7 pr-2 py-1.5 text-xs" />
