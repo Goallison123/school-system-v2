@@ -1,12 +1,12 @@
 {
   "name": "g.s-gacuba-2a-portal",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "private": true,
-  "description": "Following the discussion with the school headmaster, this is the admin side of the school's website that allows the admin to send SMS, Whatsapp and emails to parents for different kinds of things. it also allows to update landing page contents like gallerly and news",
+  "description": "The professionally designed and developed version of the school portal.",
   "keywords": [
     "sybella-systems",
     "school-website",
-    "august-2026"
+    "october-2026"
   ],
   "license": "ISC",
   "author": "sybella systems ltd",
