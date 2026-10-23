@@ -1,8 +1,10 @@
 import { supabase } from '@/lib/supabase';
 
+export type SMStatus = 'Success' | 'Queued' | 'Failed';
+
 export interface SMSRecipientResult {
   number: string;
-  status: 'Success' | 'Queued' | 'Failed';
+  status: SMStatus;
   statusCode: number;
   cost: string;
   messageId: string;
@@ -15,82 +17,110 @@ export interface SMSDispatchResult {
   recipients: SMSRecipientResult[];
 }
 
-interface SendSmsResponse {
-  success: boolean;
-  message: string;
-  totalCost: string;
-  recipients: SMSRecipientResult[];
-}
+interface SendSmsResponse extends SMSDispatchResult {}
 
-/**
- * Normalizes Rwandan phone numbers to international format (+2507...).
- */
+// Rwanda: 078, 079, 072, 073 -> +250
+const RW_LOCAL_PREFIX = /^(78|79|72|73)/;
+const RW_PREFIXES = ['250', '0'];
+
 export function formatRwandaPhone(raw: string): string {
   if (!raw) return '';
-  const clean = raw.trim();
-  const digits = clean.replace(/\D/g, '');
+  
+  const input = raw.trim();
+  const digits = input.replace(/\D/g, '');
 
-  if (digits.startsWith('250') && digits.length === 12) return `+${digits}`;
-  if (digits.startsWith('0') && digits.length === 10) return `+250${digits.slice(1)}`;
-  if (digits.length === 9 && /^(78|79|72|73)/.test(digits)) return `+250${digits}`;
-  if (clean.startsWith('+')) return clean;
-  return digits ? `+${digits}` : '';
+  if (!digits) return '';
+
+  if (digits.startsWith('250') && digits.length === 12) {
+    return `+${digits}`;
+  }
+
+  if (digits.startsWith('0') && digits.length === 10) {
+    return `+250${digits.slice(1)}`;
+  }
+
+  if (digits.length === 9 && RW_LOCAL_PREFIX.test(digits)) {
+    return `+250${digits}`;
+  }
+
+  if (input.startsWith('+')) return input;
+
+  return `+${digits}`;
 }
 
-/**
- * Calculate an estimated SMS cost in RWF (about 12 RWF per 160-character segment).
- */
-export function calculateSMSCost(recipientCount: number, messageLength: number): {
-  segments: number;
-  estimatedCostRwf: number;
-} {
+export function calculateSMSCost(recipientCount: number, messageLength: number) {
   const segments = Math.max(1, Math.ceil(messageLength / 160));
+  const costPerSegment = 12;
+
   return {
     segments,
-    estimatedCostRwf: recipientCount * segments * 12,
+    estimatedCostRwf: recipientCount * segments * costPerSegment,
   };
 }
 
 export async function sendAfricasTalkingBulkSMS(options: {
   to: string[];
   message: string;
+  campaignId?: string;
 }): Promise<SMSDispatchResult> {
   if (!supabase) {
-    throw new Error('SMS sending is unavailable until the school server is connected.');
+    throw new Error('Supabase client not initialized');
   }
 
-  const formattedNumbers = [...new Set(options.to.map(formatRwandaPhone).filter((phone) => phone.length >= 10))];
-  if (formattedNumbers.length === 0) {
-    throw new Error('Add at least one valid phone number, including its country code.');
+  const numbers = [...new Set(
+    options.to.map(formatRwandaPhone).filter((n) => /^\+250\d{9}$/.test(n))
+  )];
+
+  if (numbers.length === 0) {
+    throw new Error('No valid recipients');
   }
-  if (!options.message.trim()) {
-    throw new Error('Write a message before sending.');
+
+  const message = options.message.trim();
+
+  if (!message) {
+    throw new Error('Message body required');
+  }
+
+  if (message.length > 1600) {
+    throw new Error('Message exceeds 1600 characters');
   }
 
   const { data, error } = await supabase.functions.invoke<SendSmsResponse>('send-sms', {
-    body: { to: formattedNumbers, message: options.message.trim() },
+    body: {
+      to: numbers,
+      message,
+      campaign_id: options.campaignId,
+    },
   });
 
   if (error) {
-    let errorMessage = error.message;
+    let message = error.message;
+
     if (error.context instanceof Response) {
       try {
-        const responseBody = await error.context.json() as { error?: string };
-        errorMessage = responseBody.error || errorMessage;
+        const body = (await error.context.json()) as { error?: string };
+        if (body.error) message = body.error;
       } catch {
-        // Keep the function client's error message when the response has no JSON body.
+        // ignore json parse error
       }
     }
-    throw new Error(errorMessage || 'We couldn’t send the text message. Please try again.');
+
+    throw new Error(message);
   }
 
   if (!data) {
-    throw new Error('The school server returned no delivery result. Please try again.');
-  }
-  if (!data.success) {
-    const failedCount = data.recipients.filter((recipient) => recipient.status === 'Failed').length;
-    throw new Error(`${data.message || 'The SMS service could not send all messages.'} ${failedCount} recipient(s) were not accepted.`);
+    throw new Error('Empty response from SMS provider');
   }
 
-  return data;
+  if (!data.success) {
+    const failed = data.recipients.filter((r) => r.status === 'Failed').length;
+    throw new Error(failed > 0 ? `Delivery failed for ${failed} recipient(s)` : data.message);
+  }
+
+  return {
+    success: data.success,
+    message: data.message,
+    totalCost: data.totalCost,
+    recipients: data.recipients,
+  };
 }
