@@ -81,7 +81,15 @@ export default function MidTermEngine({ role, userId, notify }: Props) {
 
   const selectedPeriod = useMemo(() => periods.find((p) => p.id === selectedPeriodId) ?? null, [periods, selectedPeriodId]);
   const isFinalized = selectedPeriod?.status === 'finalized';
-  const isDean = role === 'dean_of_studies' || role === 'it';
+  const isDean = role === 'dean_of_studies' || role === 'it' || role === 'headteacher';
+  const canEditMarks = useMemo(() => {
+    if (isFinalized) return false;
+    if (isDean) return true;
+    if (role === 'teacher' && teacherAssignments.map(c => c.trim().toLowerCase()).includes(selectedClass.trim().toLowerCase())) {
+      return true;
+    }
+    return false;
+  }, [isDean, isFinalized, role, teacherAssignments, selectedClass]);
 
     const classes = useMemo(() => {
     const allFromStudents = [...new Set(students.map((s) => s.class_name))].filter(Boolean).sort() as string[];
@@ -242,7 +250,7 @@ export default function MidTermEngine({ role, userId, notify }: Props) {
   }
 
   async function saveMark(studentId: string, subjectId: string, value: string) {
-    if (!isDean || !selectedPeriod || isFinalized) return;
+    if (!canEditMarks || !selectedPeriod) return;
     const n = Number(value);
     if (!Number.isFinite(n) || n < 0 || n > 100) return notify('Enter a mark between 0 and 100');
     setBusy(true);
@@ -262,7 +270,7 @@ export default function MidTermEngine({ role, userId, notify }: Props) {
   }
 
   async function removeMark(studentId: string, subjectId: string) {
-    if (!isDean || !selectedPeriod || isFinalized) return;
+    if (!canEditMarks || !selectedPeriod) return;
     if (!confirm('Remove this mark?')) return;
     setBusy(true);
     try {
@@ -526,7 +534,7 @@ export default function MidTermEngine({ role, userId, notify }: Props) {
                               ) : (
                                 <div className="group flex items-center gap-1">
                                   <span className={mk ? 'font-semibold' : 'text-stone-400'}>{mk ? Number(mk.mark) : '—'}</span>
-                                  {isDean && !isFinalized && <span className="hidden group-hover:flex gap-1"><button onClick={() => setEditing({ studentId: stu.id, subjectId: sub.id, value: mk ? String(mk.mark) : '' })} className="rounded p-1 hover:bg-stone-100"><Pencil size={12} /></button>{mk && <button onClick={() => void removeMark(stu.id, sub.id)} className="rounded p-1 text-red-600 hover:bg-red-50"><Trash2 size={12} /></button>}</span>}
+                                  {canEditMarks && <span className="hidden group-hover:flex gap-1"><button onClick={() => setEditing({ studentId: stu.id, subjectId: sub.id, value: mk ? String(mk.mark) : '' })} className="rounded p-1 hover:bg-stone-100"><Pencil size={12} /></button>{mk && <button onClick={() => void removeMark(stu.id, sub.id)} className="rounded p-1 text-red-600 hover:bg-red-50"><Trash2 size={12} /></button>}</span>}
                                 </div>
                               )}
                             </td>
