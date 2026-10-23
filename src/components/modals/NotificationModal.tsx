@@ -62,12 +62,18 @@ function personalize(template: string, contact: Contact): string {
   return template.replace(/\{(FULLNAME|PARENTNAME|CLASS|FEES)\}/g, (_, k) => values[k] ?? '');
 }
 
+// Safe fingerprint: always 64 chars, never exceeds index limit
+async function createFingerprint(category: string, message: string, title: string, recipientCount: number): Promise<string> {
+  const raw = `${category}|${title.trim()}|${message.trim()}|${recipientCount}`;
+  const buffer = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(raw));
+  return Array.from(new Uint8Array(buffer)).map((b) => b.toString(16).padStart(2, '0')).join('');
+}
+
 type DeliveryResult = {
   id: string;
   name: string;
   channel: 'SMS' | 'EMAIL';
   status: 'Delivered' | 'Failed';
-  detail: string;
 };
 
 interface Props {
@@ -143,15 +149,15 @@ export default function NotificationModal({ onClose, onSave, contacts, allowRepo
   }
 
   async function handleDispatch() {
-    if (!title.trim() || !message.trim()) return setError('Title and message required');
-    if (!useSMS && !useEmail) return setError('Select at least one channel');
-    if (targeted.length === 0) return setError('No recipients');
+    if (!title.trim() || !message.trim()) return setError('Please add title and message');
+    if (!useSMS && !useEmail) return setError('Select SMS or email');
+    if (targeted.length === 0) return setError('No recipients selected');
     if (action === 'SCHEDULE' && new Date(scheduledDate).getTime() <= Date.now()) {
-      return setError('Invalid schedule date');
+      return setError('Choose a future date');
     }
 
     const recipientIds = targeted.map((c) => c.id).sort();
-    const fingerprint = `${category}|${message.trim()}|${recipientIds.join(',')}`;
+    const fingerprint = await createFingerprint(category, message, title, recipientIds.length);
     const channels: string[] = [];
     if (useSMS) channels.push('SMS');
     if (useEmail) channels.push('Email');
@@ -179,29 +185,26 @@ export default function NotificationModal({ onClose, onSave, contacts, allowRepo
     const delivery: DeliveryResult[] = [];
 
     try {
-      // SMS - Bulk in one request with personalized per contact not supported by AT bulk,
-      // so we send personalized via loop but limited to 100 and without artificial delay
       if (useSMS) {
         const smsTargets = targeted.filter((c) => c.phone);
         for (const contact of smsTargets) {
           try {
             const personalized = personalize(message.trim(), contact);
             const res = await sendAfricasTalkingBulkSMS({ to: [contact.phone], message: personalized });
-            const ok = res.recipients[0]?.status === 'Success';
+            const status = res.recipients[0]?.status;
+            const ok = status === 'Success' || status === 'Queued' || status === 'Sent';
             delivery.push({
               id: contact.id,
               name: contact.parent_name || contact.student_name,
               channel: 'SMS',
               status: ok ? 'Delivered' : 'Failed',
-              detail: res.recipients[0]?.status || 'Unknown',
             });
-          } catch (e) {
+          } catch {
             delivery.push({
               id: contact.id,
               name: contact.parent_name || contact.student_name,
               channel: 'SMS',
               status: 'Failed',
-              detail: e instanceof Error ? e.message : 'Failed',
             });
           }
         }
@@ -217,9 +220,9 @@ export default function NotificationModal({ onClose, onSave, contacts, allowRepo
               subject: title.trim(),
               message: personalized,
             });
-            delivery.push({ id: contact.id, name: contact.parent_name, channel: 'EMAIL', status: 'Delivered', detail: 'Sent' });
+            delivery.push({ id: contact.id, name: contact.parent_name, channel: 'EMAIL', status: 'Delivered' });
           } catch {
-            delivery.push({ id: contact.id, name: contact.parent_name, channel: 'EMAIL', status: 'Failed', detail: 'Failed' });
+            delivery.push({ id: contact.id, name: contact.parent_name, channel: 'EMAIL', status: 'Failed' });
           }
         }
       }
@@ -228,7 +231,7 @@ export default function NotificationModal({ onClose, onSave, contacts, allowRepo
       const failed = delivery.filter((d) => d.status === 'Failed').length;
 
       if (delivered === 0) {
-        setError(`Delivery failed for ${failed} recipients`);
+        setError('Messages were not delivered. Please check recipients and try again.');
         setResult(delivery);
         return;
       }
@@ -258,8 +261,8 @@ export default function NotificationModal({ onClose, onSave, contacts, allowRepo
           recipientIds: [...new Set(delivery.filter((d) => d.status === 'Delivered').map((d) => d.id))],
         },
       );
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Dispatch failed');
+    } catch {
+      setError('Unable to send messages. Please try again.');
     } finally {
       setIsSending(false);
     }
@@ -282,7 +285,7 @@ export default function NotificationModal({ onClose, onSave, contacts, allowRepo
         <div className="flex-1 overflow-y-auto p-5 space-y-4 text-xs">
           {isSending && (
             <div className="flex items-center gap-2 p-3 bg-amber-50 border border-amber-200 rounded text-amber-900">
-              <Loader2 size={16} className="animate-spin" /> Sending...
+              <Loader2 size={16} className="animate-spin" /> Sending to {targeted.length} parents...
             </div>
           )}
 
@@ -291,12 +294,17 @@ export default function NotificationModal({ onClose, onSave, contacts, allowRepo
               <div className="flex gap-2">
                 <CheckCircle2 size={16} className="text-emerald-700 mt-0.5" />
                 <div className="flex-1">
-                  <strong>{result.filter((r) => r.status === 'Failed').length > 0 ? 'Partial delivery' : 'Delivery complete'}</strong>
+                  <strong className="text-slate-900">
+                    {result.filter((r) => r.status === 'Failed').length > 0 ? 'Partial delivery' : 'Delivery complete'}
+                  </strong>
+                  <p className="text-[11px] text-slate-600 mt-0.5">
+                    {result.filter((r) => r.status === 'Delivered').length} delivered, {result.filter((r) => r.status === 'Failed').length} failed
+                  </p>
                   <div className="mt-2 max-h-32 overflow-auto border rounded bg-white">
                     <table className="w-full text-[10px]">
-                      <thead><tr className="bg-slate-100 text-left"><th className="p-1">Parent</th><th className="p-1">Channel</th><th className="p-1">Status</th></tr></thead>
+                      <thead><tr className="bg-slate-100 text-left"><th className="p-1.5">Parent</th><th className="p-1.5">Channel</th><th className="p-1.5">Status</th></tr></thead>
                       <tbody>{result.slice(0, 100).map((r, i) => (
-                        <tr key={i} className="border-t"><td className="p-1">{r.name}</td><td className="p-1">{r.channel}</td><td className={`p-1 font-bold ${r.status === 'Delivered' ? 'text-emerald-700' : 'text-red-600'}`}>{r.status}</td></tr>
+                        <tr key={i} className="border-t"><td className="p-1.5">{r.name}</td><td className="p-1.5">{r.channel}</td><td className={`p-1.5 font-semibold ${r.status === 'Delivered' ? 'text-emerald-700' : 'text-red-600'}`}>{r.status}</td></tr>
                       ))}</tbody>
                     </table>
                   </div>
@@ -319,15 +327,15 @@ export default function NotificationModal({ onClose, onSave, contacts, allowRepo
           </div>
 
           <div>
-            <label className="block font-bold uppercase mb-1.5">Channels</label>
+            <label className="block font-bold uppercase mb-1.5">Delivery channels</label>
             <div className="grid grid-cols-2 gap-3">
               <label className={`flex gap-3 p-3 rounded border cursor-pointer ${useSMS ? 'border-orange-500 bg-orange-50' : 'border-slate-200 bg-slate-50'}`}>
                 <input type="checkbox" checked={useSMS} onChange={(e) => setUseSMS(e.target.checked)} className="accent-[#ea580c]" />
-                <div><div className="flex items-center gap-1.5"><Smartphone size={14} /><strong>SMS</strong></div></div>
+                <div className="flex items-center gap-1.5"><Smartphone size={14} /><strong>SMS - Parent phone</strong></div>
               </label>
               <label className={`flex gap-3 p-3 rounded border cursor-pointer ${useEmail ? 'border-emerald-600 bg-emerald-50' : 'border-slate-200 bg-slate-50'}`}>
                 <input type="checkbox" checked={useEmail} onChange={(e) => setUseEmail(e.target.checked)} className="accent-emerald-700" />
-                <div><div className="flex items-center gap-1.5"><Mail size={14} /><strong>Email</strong></div></div>
+                <div className="flex items-center gap-1.5"><Mail size={14} /><strong>Email - Parent email</strong></div>
               </label>
             </div>
           </div>
@@ -336,37 +344,38 @@ export default function NotificationModal({ onClose, onSave, contacts, allowRepo
             <div className="flex justify-between mb-1">
               <label className="font-bold uppercase">Message</label>
               <div className="flex gap-1">{TEMPLATES[category].tags.map((tag) => (
-                <button key={tag} onClick={() => insertTag(tag)} className="px-1.5 py-0.5 text-[10px] font-mono bg-slate-100 border rounded">{tag}</button>
+                <button key={tag} onClick={() => insertTag(tag)} className="px-1.5 py-0.5 text-[10px] font-mono bg-slate-100 border rounded hover:bg-slate-200">{tag}</button>
               ))}</div>
             </div>
             <textarea ref={messageRef} rows={3} value={message} onChange={(e) => setMessage(e.target.value)} className="form-input w-full resize-y" />
             <div className="flex justify-between text-[11px] text-slate-500 mt-1">
-              <span>{message.length} chars</span>
-              {useSMS && <span className="flex items-center gap-1"><DollarSign size={12} />RWF {cost.estimatedCostRwf} for {targeted.length}</span>}
+              <span>{message.length} characters</span>
+              {useSMS && <span className="flex items-center gap-1"><DollarSign size={12} />Estimated: RWF {cost.estimatedCostRwf} for {targeted.length} parents</span>}
             </div>
           </div>
 
           <div>
             <div className="flex justify-between mb-1.5">
-              <label className="font-bold uppercase">Recipients ({targeted.length})</label>
+              <label className="font-bold uppercase">Recipients ({targeted.length} selected)</label>
               <div className="flex gap-2">
                 <button onClick={() => setRecipientMode('ALL')} className={`px-2 py-1 rounded border text-[11px] ${recipientMode === 'ALL' ? 'bg-slate-900 text-white' : 'bg-white'}`}><Users size={12} className="inline mr-1" />All ({validContacts.length})</button>
                 <button onClick={() => setRecipientMode('SELECT')} className={`px-2 py-1 rounded border text-[11px] ${recipientMode === 'SELECT' ? 'bg-slate-900 text-white' : 'bg-white'}`}><Check size={12} className="inline mr-1" />Select</button>
               </div>
             </div>
             <div className="max-h-36 overflow-y-auto rounded border bg-slate-50 p-2 space-y-1">
-              {validContacts.map((c) => (
-                <label key={c.id} className="flex justify-between p-1.5 rounded bg-white border text-xs">
-                  <span className="flex items-center gap-2">{recipientMode === 'SELECT' && <input type="checkbox" checked={selectedIds.includes(c.id)} onChange={() => toggleContact(c.id)} />} {c.parent_name}</span>
-                  <span className="font-mono text-[10px] text-slate-500">{formatRwandaPhone(c.phone)}</span>
-                </label>
-              ))}
+              {validContacts.length === 0 ? <p className="text-center p-2 text-slate-500 italic">No contacts for selected channels</p> :
+                validContacts.map((c) => (
+                  <label key={c.id} className="flex justify-between p-1.5 rounded bg-white border text-xs cursor-pointer hover:bg-slate-50">
+                    <span className="flex items-center gap-2">{recipientMode === 'SELECT' && <input type="checkbox" checked={selectedIds.includes(c.id)} onChange={() => toggleContact(c.id)} />} {c.parent_name} <span className="text-slate-400">({c.student_name})</span></span>
+                    <span className="font-mono text-[10px] text-slate-500">{formatRwandaPhone(c.phone)}</span>
+                  </label>
+                ))}
             </div>
           </div>
 
           <div className="grid grid-cols-3 gap-2">
-            {[{ id: 'SEND_NOW', label: 'Send Now', icon: Send }, { id: 'SAVE_DRAFT', label: 'Draft', icon: Check }, { id: 'SCHEDULE', label: 'Schedule', icon: Clock3 }].map((item) => (
-              <button key={item.id} onClick={() => setAction(item.id as DispatchAction)} className={`p-2.5 rounded border text-left ${action === item.id ? 'border-emerald-600 bg-emerald-50 font-bold' : 'border-slate-200 bg-white'}`}>
+            {[{ id: 'SEND_NOW', label: 'Send Now', icon: Send }, { id: 'SAVE_DRAFT', label: 'Save Draft', icon: Check }, { id: 'SCHEDULE', label: 'Schedule', icon: Clock3 }].map((item) => (
+              <button key={item.id} onClick={() => setAction(item.id as DispatchAction)} className={`p-2.5 rounded border text-left ${action === item.id ? 'border-emerald-600 bg-emerald-50 font-bold' : 'border-slate-200 bg-white hover:bg-slate-50'}`}>
                 <item.icon size={14} className="mb-1" /><div className="text-xs">{item.label}</div>
               </button>
             ))}
@@ -376,15 +385,15 @@ export default function NotificationModal({ onClose, onSave, contacts, allowRepo
             <input type="datetime-local" min={minDateTime} value={scheduledDate} onChange={(e) => setScheduledDate(e.target.value)} className="form-input w-full" />
           )}
 
-          {error && <div className="p-2.5 bg-red-50 border border-red-200 rounded text-red-700 flex gap-2"><AlertCircle size={15} />{error}</div>}
+          {error && <div className="p-2.5 bg-red-50 border border-red-200 rounded text-red-700 flex gap-2 text-xs"><AlertCircle size={15} className="shrink-0" />{error}</div>}
         </div>
 
         <div className="flex justify-between px-5 py-3.5 bg-slate-50 border-t">
-          <span className="text-[11px] text-slate-500">{targeted.length} recipients</span>
+          <span className="text-[11px] text-slate-500">{targeted.length} parents will receive this notice</span>
           <div className="flex gap-2">
             <button onClick={onClose} disabled={isSending} className="btn-enterprise-cancel">Cancel</button>
             <button disabled={!canSubmit} onClick={() => void handleDispatch()} className="btn-enterprise-save flex items-center gap-1.5">
-              {isSending ? <><Loader2 size={13} className="animate-spin" />Sending</> : action === 'SEND_NOW' ? <><Send size={13} />Send</> : action === 'SCHEDULE' ? <><Clock3 size={13} />Save schedule</> : <><Check size={13} />Save draft</>}
+              {isSending ? <><Loader2 size={13} className="animate-spin" />Sending</> : action === 'SEND_NOW' ? <><Send size={13} />Send notice</> : action === 'SCHEDULE' ? <><Clock3 size={13} />Save schedule</> : <><Check size={13} />Save draft</>}
             </button>
           </div>
         </div>
