@@ -39,6 +39,8 @@ import LoginScreen from '@/components/LoginScreen';
 import TeacherOverview from '@/pages/TeacherOverview';
 import ReportNotFound from '@/pages/ReportNotFound';
 
+import MaintenanceBanner, { MAINTENANCE_MODE } from "./layout/MaintenanceBanner"
+
 const MidTermEngine = React.lazy(() => import('@/pages/MidTermEngine'));
 
 function mapStudentToParentContact(
@@ -225,7 +227,6 @@ function App() {
     );
   }
 
-  // FIXED FOR THOUSANDS OF MESSAGES
   async function saveCampaign(campaign: Omit<Campaign, 'id' | 'created_at'>, dispatch: { fingerprint: string; recipientIds: string[] }) {
     if (!supabase) {
       notify('We couldn’t save this message right now. Please try again later.');
@@ -235,21 +236,14 @@ function App() {
       notify('Only the Dean or Headteacher can create SMS messages.');
       return;
     }
-
-    // Deduplication check still works via fingerprint, but we NEVER save the full 1000 ID array in one indexed row
-    // Strategy: save only count + sample to avoid PG 8191 bytes limit (code 54000)
     const recipientCount = dispatch.recipientIds.length;
-    const safeSample = dispatch.recipientIds.slice(0, 20); // 20 IDs = ~720 bytes, safe for index
+    const safeSample = dispatch.recipientIds.slice(0, 20);
 
     try {
-      // Try to insert ledger with small payload
       const { data: ledger, error: ledgerError } = await supabase.from('sms_campaign_dispatches')
         .insert({ 
           fingerprint: dispatch.fingerprint, 
           recipient_ids: safeSample,
-          // If you have these columns, they help: add them in SQL editor if missing
-          // recipient_count: recipientCount 
-          // full_hash: dispatch.fingerprint
           created_by: user?.id ?? null 
         })
         .select('id').maybeSingle();
@@ -259,13 +253,11 @@ function App() {
           notify('This message has already been saved for these parents.');
           return;
         }
-        // If still hits 54000, fallback to fingerprint only (no ids at all)
         if (ledgerError.code === '54000') {
-          console.warn('Recipient list too large for index, saving with fingerprint only', ledgerError);
           const { data: fallbackLedger, error: fallbackError } = await supabase.from('sms_campaign_dispatches')
             .insert({ 
               fingerprint: dispatch.fingerprint, 
-              recipient_ids: [], // empty to avoid index size issue
+              recipient_ids: [],
               created_by: user?.id ?? null 
             })
             .select('id').maybeSingle();
@@ -277,19 +269,15 @@ function App() {
             }
             throw fallbackError;
           }
-          // Continue with fallback ledger
           if (!fallbackLedger) {
             notify('We couldn’t save this message. Please try again.');
             return;
           }
-          // Save campaign with fallback ledger id
           const { data, error } = await supabase.from('notification_campaigns').insert({
             ...campaign,
-            // Store count in title/message metadata if needed
           }).select().maybeSingle();
           
           if (error || !data) {
-            console.error('Failed to save campaign', error);
             await supabase.from('sms_campaign_dispatches').delete().eq('id', fallbackLedger.id);
             notify('Failed to save notification.');
             return;
@@ -300,7 +288,6 @@ function App() {
           notify(campaign.status === 'Scheduled' ? 'Message scheduled.' : `Draft saved for ${recipientCount} parents. It hasn’t been sent.`);
           return;
         }
-        console.error('Could not save message recipient list', ledgerError);
         notify('We couldn’t save this message. Please try again.');
         return;
       }
@@ -312,7 +299,6 @@ function App() {
 
       const { data, error } = await supabase.from('notification_campaigns').insert(campaign).select().maybeSingle();
       if (error || !data) {
-        console.error('Failed to save campaign', error);
         await supabase.from('sms_campaign_dispatches').delete().eq('id', ledger.id);
         notify('Failed to save notification.');
         return;
@@ -328,26 +314,15 @@ function App() {
   }
 
   async function deleteCampaign(id: string) {
-    if (!supabase) {
-      notify('We couldn’t remove this message right now. Please try again later.');
-      return;
-    }
+    if (!supabase) return;
     const { error } = await supabase.from('notification_campaigns').delete().eq('id', id).throwOnError();
-    if (error) {
-      console.error('Failed to delete campaign', error);
-      notify('We couldn’t remove this message. Please try again.');
-      return;
-    }
+    if (error) return;
     setCampaigns((items) => items.filter((item) => item.id !== id));
     notify('Message removed.');
   }
 
   async function saveContent(item: Omit<Content, 'id' | 'created_at'> & Partial<Pick<Content, 'id'>>) {
-    if (!supabase) {
-      notify('We couldn’t save this update right now. Please try again later.');
-      return;
-    }
-
+    if (!supabase) return;
     const adminName = settings?.admin_name || user?.full_name || user?.email || 'Administrator';
     const payload = {
       ...item,
@@ -358,7 +333,6 @@ function App() {
       published_at: item.published_at,
       updated_at: new Date().toISOString(),
     };
-
     const targetTable = item.content_type === 'Gallery' ? 'gallery_items' : 'news_items';
     const dbData: Record<string, unknown> = item.id
       ? {
@@ -404,11 +378,7 @@ function App() {
       : await query.insert(dbData).select().maybeSingle();
 
     const { data, error } = response;
-    if (error || !data) {
-      console.error('Failed to save content', error);
-      notify('Failed to save content.');
-      return;
-    }
+    if (error || !data) return;
 
     setContent((items) => item.id
       ? items.map((existing) => existing.id === item.id ? data as Content : existing)
@@ -419,62 +389,32 @@ function App() {
   }
 
   async function saveSettings(values: { admin_name: string; default_notification_channel: string }) {
-    if (!supabase) {
-      notify('We couldn’t save your settings right now. Please try again later.');
-      return;
-    }
-
+    if (!supabase) return;
     const payload = {
       id: '00000000-0000-0000-0000-000000000001',
       admin_name: values.admin_name,
       default_notification_channel: values.default_notification_channel,
     };
-    const { data, error } = await supabase.from('workspace_settings').upsert(payload, { onConflict: 'id' }).select().maybeSingle();
-    if (error || !data) {
-      console.error('Failed to save settings', error);
-      notify('Failed to save settings.');
-      return;
-    }
-    setSettings(data as WorkspaceSettings);
+    const { data } = await supabase.from('workspace_settings').upsert(payload, { onConflict: 'id' }).select().maybeSingle();
+    if (data) setSettings(data as WorkspaceSettings);
     notify('Settings saved.');
   }
 
   async function deleteContent(id: string) {
-    if (!supabase) {
-      notify('We couldn’t remove this update right now. Please try again later.');
-      return;
-    }
-
-    const galleryDelete = await supabase.from('gallery_items').delete().eq('id', id);
-    const newsDelete = await supabase.from('news_items').delete().eq('id', id);
-    const error = galleryDelete.error || newsDelete.error;
-
-    if (error) {
-      console.error('Failed to delete content', error);
-      notify('We couldn’t remove this update. Please try again.');
-      return;
-    }
+    if (!supabase) return;
+    await supabase.from('gallery_items').delete().eq('id', id);
+    await supabase.from('news_items').delete().eq('id', id);
     setContent((items) => items.filter((item) => item.id !== id));
     notify('Website update removed.');
   }
 
   async function publishContent(id: string) {
-    if (!supabase) {
-      notify('We couldn’t publish this update right now. Please try again later.');
-      return;
-    }
+    if (!supabase) return;
     const published_at = new Date().toISOString();
-
     const galleryUpdate = await supabase.from('gallery_items').update({ status: 'Published', updated_at: published_at }).eq('id', id).select().maybeSingle();
     const newsUpdate = await supabase.from('news_items').update({ status: 'Published', published_at }).eq('id', id).select().maybeSingle();
     const data = galleryUpdate.data || newsUpdate.data;
-    const error = galleryUpdate.error || newsUpdate.error;
-
-    if (error || !data) {
-      console.error('Failed to publish content', error);
-      notify('We couldn’t publish this update. Please try again.');
-      return;
-    }
+    if (!data) return;
     setContent((items) => items.map((c) => c.id === id ? data as Content : c));
     notify('Website update published.');
   }
@@ -547,7 +487,6 @@ function App() {
     try {
       const resp = await supabase.auth.signInWithPassword({ email: email.trim().toLowerCase(), password });
       if (resp.error || !resp.data?.user) {
-        console.error('Login failed', resp.error);
         return resp.error?.message ?? 'Incorrect email or password. Please try again.';
       }
       sessionStorage.setItem(AUTH_KEY, 'true');
@@ -570,7 +509,6 @@ function App() {
       navigate('/overview');
       return null;
     } catch (err) {
-      console.error('Login error', err);
       return 'We couldn’t sign you in. Check your details and try again.';
     }
   }
@@ -618,8 +556,8 @@ function App() {
   }, []);
 
   if (location.pathname === '/report-not-found') {
-  return <ReportNotFound />;
-}
+    return <ReportNotFound />;
+  }
 
   if (!authed) return <LoginScreen onLogin={handleLogin} />;
 
@@ -630,44 +568,29 @@ function App() {
   const isHomePage = location.pathname === '/' || location.pathname === homePath;
 
   return (
-    <div className="system-shell">
+    <div className={`system-shell ${MAINTENANCE_MODE ? "pt-[40px]" : ""}`}>
+      <MaintenanceBanner />
+
       <div className="top-utility-strip">
         <div className="user-welcome">
           <span>Welcome, <strong>{user?.full_name || user?.email || 'School staff'}</strong> ({SCHOOL_NAME})</span>
         </div>
         <div className="utility-actions">
           {isDean && (
-            <button
-              type="button"
-              onClick={() => exportContacts('xls')}
-              className="util-badge-btn util-badge-purple"
-              title="Download Excel parent contact list"
-            >
+            <button type="button" onClick={() => exportContacts('xls')} className="util-badge-btn util-badge-purple">
               <Download size={12} /> Export Excel
             </button>
           )}
           {(role === 'headteacher' || isDean) && (
-            <button
-              type="button"
-              onClick={() => setShowNotification(true)}
-              className="util-badge-btn util-badge-green"
-            >
+            <button type="button" onClick={() => setShowNotification(true)} className="util-badge-btn util-badge-green">
               <Megaphone size={12} /> Send notice
             </button>
           )}
-          <button
-            type="button"
-            onClick={() => setShowNotifications((s) => !s)}
-            className="util-badge-btn util-badge-amber"
-          >
+          <button type="button" onClick={() => setShowNotifications((s) => !s)} className="util-badge-btn util-badge-amber">
             <Bell size={12} /> Updates
           </button>
           {isDean && (
-            <button
-              type="button"
-              onClick={() => setShowSettings(true)}
-              className="util-badge-btn util-badge-slate"
-            >
+            <button type="button" onClick={() => setShowSettings(true)} className="util-badge-btn util-badge-slate">
               <Settings size={12} /> Settings
             </button>
           )}
@@ -677,16 +600,9 @@ function App() {
               {(user?.full_name || user?.email || 'A')[0].toUpperCase()}
             </span>
             <span>{user?.full_name ?? user?.email ?? 'Administrator'}</span>
-            <span className="text-[10px] bg-[#f0f9ff] text-[#0369a1] px-1.5 py-0.5 rounded font-mono">
-              {roleName}
-            </span>
+            <span className="text-[10px] bg-[#f0f9ff] text-[#0369a1] px-1.5 py-0.5 rounded font-mono">{roleName}</span>
           </div>
-          <button
-            type="button"
-            onClick={handleLogout}
-            className="text-slate-500 hover:text-red-700 ml-2 p-1"
-            title="Sign out of portal"
-          >
+          <button type="button" onClick={handleLogout} className="text-slate-500 hover:text-red-700 ml-2 p-1">
             <LogOut size={15} />
           </button>
         </div>
@@ -700,7 +616,6 @@ function App() {
             <p> EXCELLENCE · SYSTEMATIZED</p>
           </div>
         </div>
-
         <div className="brand-right-tools">
           {allowedPaths.includes('/students') && (
             <button type="button" onClick={() => navigate('/students')} className="ebm-quick-btn">
@@ -708,12 +623,7 @@ function App() {
             </button>
           )}
           {allowedPaths.includes('/inquiries') && (
-            <button
-              type="button"
-              onClick={() => navigate('/inquiries')}
-              className="message-counter-badge"
-              title="Visitor questions"
-            >
+            <button type="button" onClick={() => navigate('/inquiries')} className="message-counter-badge">
               <span>{inquiries.filter((i) => i.status === 'New').length}</span>
               <Inbox size={14} />
             </button>
@@ -721,19 +631,13 @@ function App() {
         </div>
       </header>
 
-      <nav className="system-nav-bar" aria-label="System navigation">
+      <nav className="system-nav-bar">
         {visibleNavItems.map(({ id, label, icon: Icon, path }) => (
-          <NavLink
-            key={id}
-            to={path}
-            className={({ isActive }) => `system-nav-tab ${isActive ? 'active' : ''}`}
-          >
+          <NavLink key={id} to={path} className={({ isActive }) => `system-nav-tab ${isActive ? 'active' : ''}`}>
             <Icon size={15} />
             <span>{label}</span>
             {id === 'inquiries' && inquiries.filter((i) => i.status === 'New').length > 0 && (
-              <span className="nav-tab-counter">
-                {inquiries.filter((i) => i.status === 'New').length}
-              </span>
+              <span className="nav-tab-counter">{inquiries.filter((i) => i.status === 'New').length}</span>
             )}
           </NavLink>
         ))}
@@ -741,12 +645,10 @@ function App() {
 
       <div className="system-breadcrumb-row">
         <div className="breadcrumb-trail">
-          <NavLink to={homePath} className="breadcrumb-home">
-            Home
-          </NavLink>
+          <NavLink to={homePath} className="breadcrumb-home">Home</NavLink>
           {!isHomePage && (
             <>
-              <ArrowRight size={14} className="text-slate-400" aria-hidden="true" />
+              <ArrowRight size={14} className="text-slate-400" />
               <span className="breadcrumb-active">{currentNavLabel}</span>
             </>
           )}
@@ -773,9 +675,7 @@ function App() {
           <div className="modal-dialog-box max-w-md" onClick={(e) => e.stopPropagation()}>
             <div className="modal-header-bar">
               <h2>School updates</h2>
-              <button type="button" onClick={() => setShowNotifications(false)} className="modal-close-btn">
-                <X size={16} />
-              </button>
+              <button type="button" onClick={() => setShowNotifications(false)} className="modal-close-btn"><X size={16} /></button>
             </div>
             <div className="p-4">
               {campaigns.length ? (
@@ -793,9 +693,7 @@ function App() {
               )}
             </div>
             <div className="modal-footer-bar">
-              <button type="button" onClick={() => setShowNotifications(false)} className="btn-enterprise-cancel">
-                Close
-              </button>
+              <button type="button" onClick={() => setShowNotifications(false)} className="btn-enterprise-cancel">Close</button>
             </div>
           </div>
         </div>
@@ -819,9 +717,7 @@ function App() {
         </div>
       )}
 
-      <footer className="system-footer">
-        All Rights Reserved by G.S Gacuba 2A
-      </footer>
+      <footer className="system-footer">All Rights Reserved by G.S Gacuba 2A</footer>
     </div>
   );
 }
