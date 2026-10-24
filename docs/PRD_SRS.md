@@ -3,8 +3,8 @@
 
 - **Product Name:** G.S Gacuba 2A Integrated School Administration Portal
 - **Target Organization:** Groupe Scolaire Gacuba 2A (Gisenyi, Rubavu District, Western Province, Rwanda)
-- **Document Version:** 2.0.0
-- **Status:** Approved / Active Production Baseline
+- **Document Version:** 2.1.0
+- **Status:** Approved / Active Production Baseline (v2.1.0)
 - **Classification:** Internal School System Documentation
 
 ---
@@ -28,6 +28,34 @@ The platform provides a centralized, secure, multi-role operating environment fo
 - **Privacy Enforcement:** Shield parent telephone numbers and email addresses from classroom teachers while maintaining full transparent visibility for the Headteacher and Dean of Studies.
 - **Financial Traceability:** Provide instant visibility over school fee collection rates (`Paid`, `Partial`, `Unpaid`) across every class stream.
 - **Duplicate Dispatch Prevention:** Guarantee through cryptographic fingerprinting that duplicate SMS campaigns or notifications are never accidentally sent to guardians.
+
+### 1.3 Functional Scope Boundaries (Included vs. Excluded)
+To establish unambiguous operational expectations, the product scope is partitioned as follows:
+
+| Functional Area | Scope Status | Architectural Rationale & Implementation Notes |
+|---|---|---|
+| **Student Directory & Profiles** | **INCLUDED** | 800 to 1,000 active students per year + soft-deleted historical archive (`school_students_archive`). Tracks names, class streams, tuition status, and parent contacts. |
+| **RBAC & Staff Profiles** | **INCLUDED** | 20 to 30 active administrative users across Headmaster, Dean of Studies, Teachers, IT Admin, and Secretary roles. |
+| **Mid-Term Academic Engine** | **INCLUDED** | Subject allocation, mark entry, automatic REB grading conversion (`A` to `E`), class rankings, and Dean verification. |
+| **PDF Report Cards** | **INCLUDED** | Generated client-side and server-side. Enforces a **strict 7-day retention/expiry lifecycle** to keep file storage within tier quotas. |
+| **SMS Communications** | **INCLUDED** | Automated and ad-hoc Africa's Talking SMS for tuition alerts, announcements, and direct report card download links. |
+| **Public CMS & Inquiries** | **INCLUDED** | Landing page news, gallery, and visitor admissions inquiry inbox. |
+| **Daily Attendance System** | **EXCLUDED** | **Explicitly Out of Scope.** The system does not log morning, period, or daily attendance. Omitting attendance prevents millions of high-frequency volatile rows from saturating database storage. |
+| **Staff Payroll & Accounting** | **EXCLUDED** | **Explicitly Out of Scope.** Salary disbursements, deductions, contracts, and HR ledgers are managed externally. |
+| **End-of-Term Transcripts** | **EXCLUDED** | **Explicitly Out of Scope.** Focus is strictly on mid-term assessments and rapid parent turnaround. |
+
+### 1.4 Production Infrastructure, Storage Sizing & Hosting Upgrades
+1. **Production Hosting Platform:** The application is architected to operate on Supabase managed infrastructure within baseline free tier allowances:
+   - **500 MB** relational PostgreSQL database storage.
+   - **1 GB** file object storage.
+2. **Data Sizing & 1-Year Survival Calculations:**
+   - **User Base:** 800–1,000 active students annually; 20–30 staff members.
+   - **Database Footprint:** Text rows (student records, staff directory, marks, and audit logs) consume approximately **15 to 25 MB per year**.
+   - **Object Storage Footprint:** PDF reports average ~150 KB. Because reports expire and purge after **7 days**, active storage only spikes to ~150–250 MB during report release weeks and clears, remaining well within the **1 GB** allowance.
+   - **Conclusion:** The application can comfortably survive in production for a full academic year on baseline allocations.
+3. **Upgrade & Contract Responsibility Clause:**
+   - Supabase does not permit piecemeal storage purchases; expanding storage requires upgrading the entire hosting plan.
+   - The school administration is formally responsible for upgrading the hosting and database subscription plans if institutional growth, long-term archival retention, or non-standard usage exceeds baseline service tier limits.
 
 ---
 
@@ -85,7 +113,7 @@ The system enforces strict role-based access control (RBAC). A user's role is go
 - **FR-1.1.2:** Mandatory registration fields:
   - `fullName` (String, minimum 2 tokens: first name and surname)
   - `registration_number` (String, unique alphanumeric institution ID, e.g., `REG-2026-001` or `STU-101` but we are preferabbly using `GSC-XXXXX`)
-  - `studentClass` (Enum: `S1 A`, `S1 B`, `S2 A`, `S2 B`, `S3 A`, `S4 ARH`, `P5 ARH`, `P6 HGL`, `S6 MPC`, etc.)
+  - `studentClass` (Enum: `S1 A`, `S1 B`, `S1 C`, `S2 A`, `S2 B`, `S2 C`, `S3 A`, `S3 B`, `S3 C`, `S4 ARH`, `S4 STREAM 2`, `S5 ARH`, `S5 STREAM 2`, `S6 MPC`, `S6 HGL`)
   - `stream` (String, e.g., `General or O' level`, `Sciences`, `Humanities`)
   - `parentName` (String, mandatory, cannot be "not provided")
   - `email` (Valid RFC 5322 email string)

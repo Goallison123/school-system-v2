@@ -1,8 +1,8 @@
 # Software Design Document (SDD)
 ## G.S Gacuba 2A Integrated School Administration Portal
 
-- **Document Version:** 2.0.0
-- **Status:** Architectural Baseline
+- **Document Version:** 2.1.0
+- **Status:** Architectural Baseline (v2.1.0)
 - **System Classification:** Web-based Enterprise Academic Management System (SPA + BaaS)
 
 ---
@@ -376,6 +376,23 @@ $$;
   2. The client checks `pdf_generated_at` in the report metadata.
   3. **Cache Hit:** If `pdf_generated_at` is non-null and `now() - pdf_generated_at < 7 days`, a signed download URL is requested directly from Supabase Storage.
   4. **Cache Miss / Invalidation:** If null or older than 7 days, the client recompiles the PDF using `jspdf`, uploads the new binary stream to `reports/{period}/{student_id}.pdf` with `upsert: true`, and updates `pdf_generated_at = now()`.
+
+### 5.2 Storage Capacity Budget, Scope Boundary & Upgrade Policy
+1. **Infrastructure Quotas (Supabase Baseline):**
+   - Relational Database Storage: **500 MB**
+   - Object / Bucket File Storage: **1 GB**
+2. **Institutional Capacity Sizing:**
+   - Active Students: 800 to 1,000 active students per year + soft-deleted departures in `school_students_archive`.
+   - Staff Users: 20 to 30 administrative/pedagogical users.
+3. **Storage Consumption Model (Only 2 Elements Take Storage):**
+   - **PostgreSQL Database Rows:** Total data volume (students, archived records, subject marks, SMS audit dispatches) generates roughly **15 to 25 MB per academic year** for 1,000 students. Over multiple years, database storage remains a small fraction of the 500 MB quota.
+   - **PDF Report Files:** Individual PDF reports average ~150 KB. Under the **7-day ephemeral cache lifecycle**, reports exist in storage only during the active parent distribution window. Peak storage during distribution stays at ~150–250 MB and purges, never breaching the **1 GB** object storage limit.
+4. **Architectural Scope Exclusions to Protect Storage:**
+   - **Daily Attendance Excluded:** Deliberately omitted. Daily period attendance would generate ~1,000 students × 5 periods × 180 days = 900,000 database rows annually, causing premature database tier exhaustion.
+   - **Payroll & HR Excluded:** Maintained externally.
+5. **Hosting Upgrades Responsibility:**
+   - Supabase storage cannot be purchased piecemeal without upgrading the subscription tier.
+   - The school administration is formally responsible for upgrading the hosting and database plans if institutional demand exceeds baseline service tier limits.
 
 ---
 

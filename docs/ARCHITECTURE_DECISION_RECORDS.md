@@ -16,6 +16,9 @@ This document records the architectural, technical, and operational decisions go
 - **ADR-008:** Transactional Notification Outbox Pattern with Deno Edge Functions and Resend API
 - **ADR-009:** Client-Side Delimiter-Sniffing and Synonym-Aliasing CSV Ingestion Engine
 - **ADR-010:** Resilient Hybrid Persistence with Zero-Crash Local Mock Client Fallback
+- **ADR-011:** Student Soft-Deletion and Historical Archival Subsystem (`school_students_archive`)
+- **ADR-012:** Cryptographic Parent Report Card Tokenization & Edge Function Streaming Delivery
+- **ADR-013:** Scope Boundary: Exclusion of Daily Attendance & Payroll to Enforce 500MB/1GB Storage Survival
 
 ---
 
@@ -237,3 +240,90 @@ Implement a hybrid query engine in `src/lib/supabase.ts`. When `VITE_SUPABASE_UR
   - Robust error boundary handling throughout the application.
 - **Negative:**
   - Changes made in mock mode are stored in browser localStorage and do not automatically sync to the remote database upon reconnection.
+
+---
+
+### ADR-011: Student Soft-Deletion and Historical Archival Subsystem (`school_students_archive`)
+
+#### Status
+**Accepted & Implemented (v2.1.0)**
+
+#### Context
+Hard-deleting student records leads to catastrophic cascading deletions or orphaned marks in previous academic term records. Furthermore, administrative errors during end-of-year roster pruning could purge active students.
+
+#### Decision
+Implement a dedicated archive schema (`school_students_archive`):
+1. In the UI, student deletion triggers a mandatory prompt requiring an explicit textual justification (e.g., "Transferred to secondary boarding", "Family relocated to Kigali", "Administrative duplicate").
+2. The transaction inserts the entire student demographic payload into `school_students_archive` alongside the reason, authoring timestamp, and administrator UUID.
+3. The original record in `school_students` is removed, but historical marks in `student_midterm_marks` and snapshots in `midterm_reports` remain anchored.
+4. An administrative restore workflow is provided in `Students.tsx` allowing one-click reactivation of archived students without loss of historical continuity.
+
+#### Consequences
+- **Positive:**
+  - Zero accidental permanent data loss.
+  - Full institutional accountability and audit trail for student departures.
+  - Ability to restore students who return to the school in subsequent terms.
+- **Negative:**
+  - Database storage slightly increases due to retention of archived profiles.
+
+---
+
+### ADR-012: Cryptographic Parent Report Card Tokenization & Edge Function Streaming Delivery
+
+#### Status
+**Accepted & Implemented (v2.1.0)**
+
+#### Context
+Parents at G.S Gacuba 2A do not possess school accounts or passwords. Storing PDF report cards in public cloud buckets exposes sensitive child academic evaluations to public internet indexers. Conversely, forcing parents to register accounts creates an insurmountable barrier for guardians with basic feature phones or limited digital literacy.
+
+#### Decision
+Implement a zero-login, tokenized report card distribution pipeline:
+1. When an academic period is finalized, the `issue-midterm-links` edge function generates high-entropy, cryptographically random, URL-safe tokens (`access_token`) mapped to each compiled report in `midterm_reports`.
+2. Parents receive a direct SMS containing a brief, localized link: `https://portal.gsgacuba2a.rw/report?token=<UUID/Hash>`.
+3. The `download-midterm-report` edge function validates the token against the active period, reads the frozen `report_data` JSON payload, streams the formatted binary PDF directly to the browser, and logs parent download receipts.
+4. Tokens are revoked automatically if an academic period is reopened or superseded.
+
+#### Consequences
+- **Positive:**
+  - Zero friction for parents: One tap from an SMS notification opens their child's official signed report card.
+  - Complete security: Sequential ID enumeration attacks are impossible.
+  - High performance: PDF generation happens on demand or streams from pre-compiled edge snapshots.
+- **Negative:**
+  - If a parent forwards their SMS, the recipient can also view that specific child's report card. This trade-off is accepted by school governance in exchange for frictionless parental engagement.
+
+---
+
+### ADR-013: Scope Boundary: Exclusion of Daily Attendance & Payroll to Enforce 500MB/1GB Storage Survival
+
+#### Status
+**Accepted & Implemented (v2.1.0)**
+
+#### Context
+G.S Gacuba 2A deploys to a managed Supabase production instance operating under baseline plan constraints: 500 MB database storage and 1 GB object file storage. The school serves 800 to 1,000 active students and 20 to 30 staff members.
+
+A critical design requirement is that the institution must not suffer unexpected storage exhaustion or service outages within a 1-year academic cycle. In school administration software, two features notoriously exhaust database storage:
+1. Daily attendance tracking (morning and period-by-period logs create 500,000–900,000 rows annually).
+2. Human resources and payroll accounting (requires complex tax, ledger, and transactional audit trails).
+
+Additionally, unpruned PDF report storage would quickly exceed the 1 GB object storage limit if stored permanently for 1,000 students across multiple terms.
+
+#### Decision
+1. **Explicit Scope Exclusion:** Daily attendance recording and staff payroll are deliberately declared out-of-scope and omitted from the database schema.
+2. **Lean Core Scope:** The platform focuses strictly on:
+   - Student & parent directory (800–1,000 active students + archived departures).
+   - Staff RBAC (20–30 members).
+   - Mid-term academic grading and rankings.
+   - SMS notifications via Africa's Talking.
+3. **7-Day Ephemeral PDF Cache Window:** Generated student report card PDFs are retained for a 7-day ephemeral distribution window rather than stored permanently. Reports are generated on-the-fly and cached temporarily during the active parent release period.
+4. **Capacity Survival:** With only relational rows (consuming 15–25 MB/year) and ephemeral PDFs (peaking at ~150–250 MB during release before expiring), total storage comfortably survives within the 500 MB database and 1 GB file storage thresholds for an entire year.
+5. **Contractual Responsibility Boundary:** Supabase does not permit piecemeal storage purchases; expanding storage requires upgrading the whole subscription plan. The school administration is formally responsible for upgrading the hosting and database plans if institutional demand exceeds the baseline plan limits.
+
+#### Consequences
+- **Positive:**
+  - Guarantees 1-year continuous operation on baseline infrastructure without database exhaustion or unexpected upgrade costs.
+  - High database query performance with near-instant index scans.
+  - Crystal-clear operational and contractual boundaries.
+- **Negative:**
+  - The school must continue using external ledgers or specialized software for daily attendance and employee payroll.
+
+
