@@ -435,5 +435,5 @@ Scheduled or on-demand notification agent dispatching internal reminders to teac
 - **Provider:** Africa's Talking Ltd (Rwanda Node)
 - **Supported Rwandan Carrier Networks:** MTN Rwanda (`63510`), Airtel Rwanda (`63513`)
 - **Number Normalization:** All destination addresses must conform to E.164 format: `+2507[2|3|8|9]XXXXXXX`.
-- **Sender ID:** `GACUBA2A` (Configured through Rwanda Utilities Regulatory Authority - RURA registration).
+- **Sender ID:** `SYBELLA` (Configured through Rwanda Utilities Regulatory Authority - RURA registration by Africa's talking).
 

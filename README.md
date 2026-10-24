@@ -271,7 +271,7 @@ public.midterm_reports (
    # Africa's Talking SMS Gateway
    VITE_AFRICASTALKING_USERNAME="sandbox"
    VITE_AFRICASTALKING_API_KEY="your_api_key"
-   VITE_AFRICASTALKING_SENDER_ID="GACUBA2A"
+   VITE_AFRICASTALKING_SENDER_ID="sandbox"
    VITE_AFRICASTALKING_ENV="sandbox"
 
    # School Email Configuration
@@ -401,6 +401,5 @@ supabase functions deploy send-sms
 
 - **Institution:** Groupe Scolaire Gacuba 2A, Rubavu District, Western Province, Rwanda.
 - **Development & Architecture:** Sybella Systems Ltd.
-- **Maintainer:** Core Engineering Team (`admin@gsgacuba2a.rw`)
 - **Version:** 2.1.0 (Released October 2026)
 
