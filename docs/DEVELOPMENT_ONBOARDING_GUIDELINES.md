@@ -2,7 +2,7 @@
 ## G.S Gacuba 2A Integrated School Administration Portal
 
 - **Audience:** Core Engineers, Technical Contributors, IT Custodians
-- **Document Version:** 2.0.0
+- **Document Version:** 2.1.0
 - **Status:** Approved Engineering Standards
 
 ---
@@ -11,8 +11,8 @@
 
 To contribute to the G.S Gacuba 2A portal codebase, your local workstation should have the following tools installed:
 
-- **Node.js:** v18.18.0+ or v20.x LTS (Recommended)
-- **Package Manager:** `npm` (v9+) or `bun` (v1.1+)
+- **Node.js:** v18.18.0+ or v20.x LTS / v22.x
+- **Package Manager:** `npm` (v9+)
 - **TypeScript:** v5.5+
 - **Version Control:** `git` (v2.30+)
 - **Database Client / CLI (Optional):** Supabase CLI (`brew install supabase/tap/supabase` or `npm i -g supabase`)
@@ -24,8 +24,8 @@ To contribute to the G.S Gacuba 2A portal codebase, your local workstation shoul
 
 ### Step 1: Clone the Repository
 ```bash
-git clone https://github.com/Goallison123/g.s-gacuba-2a-admin-dashbaord.git
-cd g.s-gacuba-2a-admin-dashbaord
+git clone https://github.com/Goallison123/school-system-v2.git
+cd school-system-v2
 ```
 
 ### Step 2: Install Dependencies

@@ -4,8 +4,8 @@
 - **Protocol:** HTTPS RESTful / WebSockets (Realtime)
 - **Data Exchange Format:** JSON (`application/json`)
 - **API Architectural Style:** PostgREST on Supabase + Deno Serverless Edge Functions
-- **Document Version:** 2.0.0
-- **Status:** Approved Baseline
+- **Document Version:** 2.1.0
+- **Status:** Approved Baseline (Production v2.1.0)
 
 ---
 
@@ -229,8 +229,8 @@ Executes an atomic batch insert of validated student records.
     {
       "registration_number": "REG-2026-101",
       "full_name": "Kwizera Yves",
-      "class_name": "S6 A",
-      "stream": "A",
+      "class_name": "S6 MPC",
+      "stream": "MPC",
       "parent_name": "Aline Uwimbabazi",
       "email": "kwizera.yves@gmail.com",
       "phone": "+250791444333",
@@ -278,74 +278,162 @@ Content-Type: application/json
 
 ---
 
-## 5. Serverless Edge Functions: Resend Email Worker
+## 5. Serverless Deno Edge Functions (v2.1.0)
 
-### `POST /functions/v1/dispatch-midterm-emails`
-Processes undelivered rows in `public.midterm_notification_outbox`. Triggered on a schedule or via secure administrative invocation.
+All edge functions reside in `/supabase/functions` and execute in the Deno runtime with CORS and bearer authentication.
+
+### 5.1 `POST /functions/v1/issue-midterm-links`
+Generates cryptographically random, URL-safe access tokens for student reports in an academic period.
 
 - **Headers:**
-  - `Authorization: Bearer <SUPABASE_SERVICE_ROLE_KEY>`
+  - `Authorization: Bearer <USER_ACCESS_TOKEN_JWT>` or `Bearer <SERVICE_ROLE_KEY>`
   - `Content-Type: application/json`
-
-- **Execution Workflow:**
-  1. Selects pending rows:
-     `SELECT id, recipient_email, event_type, payload FROM public.midterm_notification_outbox WHERE delivered_at IS NULL LIMIT 50;`
-  2. Dispatches HTTP POST to Resend API:
-     - URL: `https://api.resend.com/emails`
-     - Header: `Authorization: Bearer ${RESEND_API_KEY}`
-     - Body:
-       ```json
-       {
-         "from": "G.S Gacuba 2A <notifications@gacuba2a.rw>",
-         "to": "teacher@gacuba2a.rw",
-         "subject": "Mid-Term Examination Date Scheduled",
-         "html": "<h3>Official Mid-Term Examination Date Set</h3><p>Date: 2026-11-16</p>"
-       }
-       ```
-  3. Updates database on success:
-     `UPDATE public.midterm_notification_outbox SET delivered_at = now() WHERE id = :id;`
-
+- **Request Body:**
+  ```json
+  {
+    "report_ids": [
+      "71000000-0000-4000-8000-000000000001",
+      "71000000-0000-4000-8000-000000000002"
+    ]
+  }
+  ```
 - **Response `200 OK`:**
-```json
-{
-  "success": true,
-  "processed": 14,
-  "failed": 0
-}
-```
+  ```json
+  {
+    "success": true,
+    "issued_count": 2,
+    "links": [
+      {
+        "report_id": "71000000-0000-4000-8000-000000000001",
+        "access_token": "a4f89d3c-9102-4ec5-b1a0-e3256191f4aa",
+        "url": "https://portal.gsgacuba2a.rw/report?token=a4f89d3c-9102-4ec5-b1a0-e3256191f4aa"
+      }
+    ]
+  }
+  ```
 
 ---
 
-## 6. External SMS Gateway Integration Contract
+### 5.2 `GET /functions/v1/download-midterm-report?token=<ACCESS_TOKEN>`
+Publicly accessible (unauthenticated) endpoint for parents to download the official student report card.
 
-SMS campaigns are stored in `public.sms_campaign_dispatches` and `public.midterm_sms_dispatches`. External telecommunication providers, AT for now, communicate using this standard gateway protocol: 
+- **Query Parameters:**
+  - `token` (string, required): Cryptographic access token issued by `issue-midterm-links`.
+- **Response Headers:**
+  - `Content-Type: application/pdf`
+  - `Content-Disposition: inline; filename="GS_Gacuba2A_MidTerm_Report.pdf"`
+- **Response Status Codes:**
+  - `200 OK`: Binary PDF stream rendered with official badge, teacher marks, REB grading, and stamp.
+  - `404 Not Found`: Token invalid, expired, or academic period revoked.
 
-### 6.1 Outbound SMS Dispatch Payload
-```json
-{
-  "sender_id": "GS_GACUBA2A",
-  "dispatch_fingerprint": "FEES|Dear Parent, remaining school fees balance...|71000000-0000-4000-8000-000000000001",
-  "recipients": [
-    {
-      "recipient_id": "71000000-0000-4000-8000-000000000001",
-      "phone": "+250788123456",
-      "message": "Dear Parent, remaining school fees balance for INEZA Divine is 0 RWF. Please settle promptly."
-    }
-  ]
-}
-```
+---
 
-### 6.2 Delivery Status Callback (Webhook)
-```http
-POST /functions/v1/sms-delivery-callback HTTP/1.1
-Host: <project-ref>.supabase.co
-Content-Type: application/json
+### 5.3 `POST /functions/v1/finalize-midterm`
+Executes server-side atomic finalization of an academic period.
 
-{
-  "dispatch_fingerprint": "FEES|Dear Parent...",
-  "recipient_id": "71000000-0000-4000-8000-000000000001",
-  "status": "DELIVERED",
-  "network_code": "63510",
-  "timestamp": "2026-10-15T10:45:12Z"
-}
-```
+- **Headers:**
+  - `Authorization: Bearer <HEADMASTER_OR_ADMIN_JWT>`
+  - `Content-Type: application/json`
+- **Request Body:**
+  ```json
+  {
+    "period_id": "81000000-0000-4000-8000-000000000001"
+  }
+  ```
+- **Execution Workflow:**
+  1. Validates that current user role is `headmaster` or `admin`.
+  2. Confirms all active classes have recorded marks for enabled subjects.
+  3. Computes class averages and ranks.
+  4. Freezes student demographic and contact snapshots into `midterm_reports`.
+  5. Updates `midterm_periods.status = 'finalized'`.
+- **Response `200 OK`:**
+  ```json
+  {
+    "success": true,
+    "period_id": "81000000-0000-4000-8000-000000000001",
+    "status": "finalized",
+    "finalized_reports_count": 842
+  }
+  ```
+
+---
+
+### 5.4 `POST /functions/v1/send-sms`
+Secure serverless proxy interfacing with the Africa's Talking SMS API gateway. Protects credentials from client-side bundles and validates Rwandan mobile numbering (+250).
+
+- **Headers:**
+  - `Authorization: Bearer <AUTHENTICATED_USER_JWT>`
+  - `Content-Type: application/json`
+- **Request Body:**
+  ```json
+  {
+    "to": ["+250788123456", "+250722987654"],
+    "message": "G.S Gacuba 2A: Mid-Term reports for Term 1 are now available online. View here: https://portal.gsgacuba2a.rw/report?token=a4f89d3c",
+    "enqueue": true
+  }
+  ```
+- **Response `200 OK`:**
+  ```json
+  {
+    "success": true,
+    "recipients": [
+      {
+        "number": "+250788123456",
+        "status": "Success",
+        "messageId": "ATXid_b7a8c9e012",
+        "cost": "RWF 15.00"
+      }
+    ]
+  }
+  ```
+
+---
+
+### 5.5 `POST /functions/v1/deliver-midterm-parent-notifications`
+High-volume batch orchestrator that queries compiled report links and sends customized SMS messages to parent rosters.
+
+- **Headers:**
+  - `Authorization: Bearer <ADMIN_OR_HEADMASTER_JWT>`
+  - `Content-Type: application/json`
+- **Request Body:**
+  ```json
+  {
+    "period_id": "81000000-0000-4000-8000-000000000001",
+    "class_name": "S3 A",
+    "template": "Muraho {parent_name}, indangamanota ya {student_name} ({class_name}) irabonetse: {report_link}"
+  }
+  ```
+- **Response `200 OK`:**
+  ```json
+  {
+    "success": true,
+    "queued": 48,
+    "skipped_no_phone": 2
+  }
+  ```
+
+---
+
+### 5.6 `POST /functions/v1/send-midterm-reminders`
+Scheduled or on-demand notification agent dispatching internal reminders to teachers with pending mark entries.
+
+- **Headers:**
+  - `Authorization: Bearer <SUPABASE_SERVICE_ROLE_KEY>`
+- **Response `200 OK`:**
+  ```json
+  {
+    "success": true,
+    "reminded_teachers_count": 6,
+    "classes_pending": ["S2 B", "S1 C"]
+  }
+  ```
+
+---
+
+## 6. External Telecommunications Gateway Specification (Africa's Talking)
+
+- **Provider:** Africa's Talking Ltd (Rwanda Node)
+- **Supported Rwandan Carrier Networks:** MTN Rwanda (`63510`), Airtel Rwanda (`63513`)
+- **Number Normalization:** All destination addresses must conform to E.164 format: `+2507[2|3|8|9]XXXXXXX`.
+- **Sender ID:** `GACUBA2A` (Configured through Rwanda Utilities Regulatory Authority - RURA registration).
+

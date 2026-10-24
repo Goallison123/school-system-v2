@@ -173,3 +173,39 @@ Do not rewrite or delete migration history to repair production.
 Obtain a read-only inventory of the actual Supabase schema, including tables, columns, constraints, indexes, RLS policies, functions, and triggers.
 
 Use that inventory to reconcile the live database with the repository before creating the first production migration.
+
+---
+
+## 11. Production Storage Capacity & Scope Sizing Audit
+
+### 11.1 Infrastructure Baseline
+- **Database Engine:** Supabase PostgreSQL 15 Managed Instance
+- **Database Storage Quota:** 500 MB (Baseline Free Tier Allocation)
+- **Object / Bucket Storage Quota:** 1 GB (Baseline Free Tier Allocation)
+
+### 11.2 Population & Data Volume Projections
+- **Active Students:** 800 to 1,000 active students per academic year.
+- **Departed/Archived Students:** Preserved in `school_students_archive` with mandatory reason audit logs.
+- **Staff Users:** 20 to 30 staff members (`public.users`) across all administrative and pedagogical roles.
+
+### 11.3 Scope Verification: Explicit Inclusions & Exclusions
+- **INCLUDED IN SCHEMA:**
+  - `school_students` & `school_students_archive` (Student profiles and contact numbers).
+  - `users` & `teacher_class_assignments` (Staff profiles and stream assignments).
+  - `midterm_periods`, `midterm_subjects`, `student_midterm_marks`, `midterm_reports` (Academic evaluation).
+  - `notification_campaigns`, `sms_campaign_dispatches` (Africa's Talking SMS records).
+  - `midterm_reports.report_data` (JSONB report snapshots) + 7-Day Ephemeral PDF delivery.
+- **EXCLUDED FROM SCHEMA (Zero Schema Footprint):**
+  - **Daily Attendance:** No attendance tables exist. Deliberately excluded to eliminate millions of volatile daily rows.
+  - **Staff Payroll / HR:** No payroll, salary, or financial employee tables exist. Managed externally.
+  - **Comprehensive Multi-Term Transcripts:** Focused strictly on mid-term reports.
+
+### 11.4 1-Year Survival Calculations
+1. **Relational Database Rows:** 1,000 students × 15 subjects × 3 terms = ~45,000 mark rows per year (~10–15 MB). Adding student profiles, contacts, and audit logs brings total relational data to **under 25 MB per academic year**, consuming only ~5% of the 500 MB quota.
+2. **File Storage (PDF Reports):** Individual PDF report cards average ~150 KB. Enforcing a **7-day ephemeral cache lifecycle** ensures generated reports expire and purge after the active parent distribution window. Peak storage during report release sits at ~150–250 MB and clears, never breaching the **1 GB** allocation.
+3. **Verdict:** The platform can operate for an entire academic year within the baseline 500 MB database and 1 GB storage allocations.
+
+### 11.5 Hosting Upgrades & Maintenance Responsibility
+- Supabase storage cannot be expanded independently without upgrading the entire hosting plan subscription.
+- The school administration is formally responsible for upgrading the hosting and database plans if institutional growth (e.g., student population exceeding 1,000, multi-year unpruned archives, or non-standard storage use) demands capacity exceeding baseline service plan allocations.
+
