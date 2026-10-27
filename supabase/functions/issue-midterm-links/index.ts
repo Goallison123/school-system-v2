@@ -124,9 +124,11 @@ Deno.serve(async (req) => {
         if (updateError) return json({ error: "Unable to publish report." }, 500);
       }
 
-      const downloadUrl = `${supabaseUrl}/functions/v1/download-midterm-report?token=${token!}`;
-      // FIX 2: Return token + url to frontend
-      links.push({ report_id: report.id, token: token!, url: downloadUrl, download_url: downloadUrl, expires_at: expiresAtStr! });
+      const baseUrl = Deno.env.get("REPORT_BASE_URL") || "https://gacuba2a.co.rw";
+      const downloadUrl = `${baseUrl}/parent-report/${report.id}?token=${token!}`;
+      const directDownload = `${supabaseUrl}/functions/v1/download-midterm-report?token=${token!}`;
+      // Return gacuba link to frontend, but keep direct link as backup
+      links.push({ report_id: report.id, token: token!, url: downloadUrl, download_url: downloadUrl, direct_url: directDownload, expires_at: expiresAtStr! });
 
       // Queue notifications if we have contacts
       let queued = 0;
