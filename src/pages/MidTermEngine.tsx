@@ -130,7 +130,8 @@ export default function MidTermEngine({ role, userId, notify }: Props) {
   const marksTotalPages = Math.max(1, Math.ceil(classStudents.length / PAGE_SIZE));
   const reportsTotalPages = Math.max(1, Math.ceil(periodReports.length / PAGE_SIZE));
 
-  const buildLink = useCallback((report: Report, token: string) => `${window.location.origin}/parent-report/${report.id}?token=${token}`, []);
+  const REPORT_BASE_URL = import.meta.env.VITE_REPORT_BASE_URL || 'https://gacuba.co.rw';
+  const buildLink = useCallback((report: Report, token: string) => `${REPORT_BASE_URL}/parent-report/${report.id}?token=${token}`, []);
 
   const refresh = useCallback(async () => {
     if (!supabase) return;
@@ -325,7 +326,13 @@ export default function MidTermEngine({ role, userId, notify }: Props) {
       const { data: linkData } = await supabase!.functions.invoke('issue-midterm-links', { body: { report_ids: periodReports.map((r) => r.id) } });
       const links: IssuedToken[] = (linkData as any)?.links || (Array.isArray(linkData) ? linkData : []) as any;
       const map: Record<string, IssuedToken> = {};
-      links.forEach((i) => { if (i.report_id && i.token) map[i.report_id] = { report_id: i.report_id, token: i.token, url: (i as any).url || buildLink({ id: i.report_id } as Report, i.token) }; });
+      links.forEach((i) => { 
+  if (i.report_id && i.token) {
+    // Always force gacuba.co.rw, ignore what function returns
+    const url = buildLink({ id: i.report_id } as Report, i.token);
+    map[i.report_id] = { report_id: i.report_id, token: i.token, url }; 
+  }
+});
       setIssuedTokens(map);
       localStorage.setItem(`midterm_tokens_${selectedPeriod.id}`, JSON.stringify(map));
       notify(`Finalized with ${Object.keys(map).length} parent links`);
@@ -356,7 +363,7 @@ export default function MidTermEngine({ role, userId, notify }: Props) {
         const st = students.find((s) => s.id === r.student_id);
         const tk = map[r.id]?.token;
         if (!st || !tk) continue;
-        const link = map[r.id].url || buildLink(r, tk);
+        const link = buildLink(r, tk);
         try {
           if (st.phone) await sendAfricasTalkingBulkSMS({ to: [st.phone], message: `Report for ${st.full_name} ${r.average}%: ${link} - ${SCHOOL_NAME}` });
           if (st.email) await sendBulkEmail({ recipients: [{ email: st.email, name: st.parent_name }], subject: `Mid-term ${st.full_name}`, message: link });
