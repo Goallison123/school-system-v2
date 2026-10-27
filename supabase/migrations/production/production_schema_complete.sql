@@ -815,7 +815,6 @@ ALTER TABLE public.school_inquiries ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.gallery_items ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.news_items ENABLE ROW LEVEL SECURITY;
 
-ALTER TABLE storage.objects ENABLE ROW LEVEL SECURITY;
 
 REVOKE ALL ON ALL TABLES IN SCHEMA public FROM anon, authenticated;
 REVOKE ALL ON public.teacher_student_register FROM PUBLIC;
