@@ -263,9 +263,7 @@ CREATE TABLE IF NOT EXISTS public.midterm_settings (
   CONSTRAINT midterm_settings_updated_by_fkey FOREIGN KEY (updated_by) REFERENCES auth.users(id) ON DELETE SET NULL
 );
 
-INSERT INTO public.midterm_settings (id, official_date, review_status)
-VALUES (1, CURRENT_DATE, 'pending')
-ON CONFLICT (id) DO NOTHING;
+
 
 -- ============================================================================
 -- 8. ASSESSMENT MARKS & MID-TERM REPORT CARDS
