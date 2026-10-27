@@ -208,57 +208,84 @@ GRANT INSERT, UPDATE, DELETE ON public.gallery_items TO authenticated;
 GRANT INSERT, UPDATE, DELETE ON public.news_items TO authenticated;
 
 -- Contacts Policies
+DROP POLICY IF EXISTS contacts_select ON public.school_contacts;
 CREATE POLICY contacts_select ON public.school_contacts FOR SELECT TO authenticated USING (true);
+
+DROP POLICY IF EXISTS contacts_manage ON public.school_contacts;
 CREATE POLICY contacts_manage ON public.school_contacts FOR ALL TO authenticated
   USING (public.current_school_role() IN ('dean_of_studies', 'headteacher', 'it'))
   WITH CHECK (public.current_school_role() IN ('dean_of_studies', 'headteacher', 'it'));
 
 -- Notification Campaigns Policies
+DROP POLICY IF EXISTS campaigns_select ON public.notification_campaigns;
 CREATE POLICY campaigns_select ON public.notification_campaigns FOR SELECT TO authenticated USING (true);
+
+DROP POLICY IF EXISTS campaigns_manage ON public.notification_campaigns;
 CREATE POLICY campaigns_manage ON public.notification_campaigns FOR ALL TO authenticated
   USING (public.current_school_role() IN ('dean_of_studies', 'headteacher', 'it'))
   WITH CHECK (public.current_school_role() IN ('dean_of_studies', 'headteacher', 'it'));
 
 -- SMS Campaign Dispatches Policies
+DROP POLICY IF EXISTS sms_dispatches_select ON public.sms_campaign_dispatches;
 CREATE POLICY sms_dispatches_select ON public.sms_campaign_dispatches FOR SELECT TO authenticated USING (true);
+
+DROP POLICY IF EXISTS sms_dispatches_insert ON public.sms_campaign_dispatches;
 CREATE POLICY sms_dispatches_insert ON public.sms_campaign_dispatches FOR ALL TO authenticated
   USING (public.current_school_role() IN ('dean_of_studies', 'headteacher', 'it'))
   WITH CHECK (public.current_school_role() IN ('dean_of_studies', 'headteacher', 'it'));
 
 -- Midterm SMS Dispatches Policies
+DROP POLICY IF EXISTS midterm_dispatches_select ON public.midterm_sms_dispatches;
 CREATE POLICY midterm_dispatches_select ON public.midterm_sms_dispatches FOR SELECT TO authenticated USING (true);
+
+DROP POLICY IF EXISTS midterm_dispatches_insert ON public.midterm_sms_dispatches;
 CREATE POLICY midterm_dispatches_insert ON public.midterm_sms_dispatches FOR ALL TO authenticated
   USING (public.current_school_role() IN ('dean_of_studies', 'headteacher', 'it'))
   WITH CHECK (public.current_school_role() IN ('dean_of_studies', 'headteacher', 'it'));
 
 -- Outbox Policies
+DROP POLICY IF EXISTS outbox_select ON public.midterm_notification_outbox;
 CREATE POLICY outbox_select ON public.midterm_notification_outbox FOR SELECT TO authenticated
   USING (public.current_school_role() IN ('dean_of_studies', 'headteacher', 'it'));
+
+DROP POLICY IF EXISTS outbox_insert ON public.midterm_notification_outbox;
 CREATE POLICY outbox_insert ON public.midterm_notification_outbox FOR INSERT TO authenticated WITH CHECK (true);
 
 -- CMS School Content Policies
+DROP POLICY IF EXISTS content_public_read ON public.school_content;
 CREATE POLICY content_public_read ON public.school_content FOR SELECT TO anon, authenticated
   USING (status = 'Published' OR public.current_school_role() IN ('dean_of_studies', 'headteacher', 'it'));
+
+DROP POLICY IF EXISTS content_manage ON public.school_content;
 CREATE POLICY content_manage ON public.school_content FOR ALL TO authenticated
   USING (public.current_school_role() IN ('dean_of_studies', 'it'))
   WITH CHECK (public.current_school_role() IN ('dean_of_studies', 'it'));
 
 -- School Inquiries Policies
+DROP POLICY IF EXISTS inquiries_public_insert ON public.school_inquiries;
 CREATE POLICY inquiries_public_insert ON public.school_inquiries FOR INSERT TO anon, authenticated WITH CHECK (true);
+
+DROP POLICY IF EXISTS inquiries_staff_manage ON public.school_inquiries;
 CREATE POLICY inquiries_staff_manage ON public.school_inquiries FOR ALL TO authenticated
   USING (public.current_school_role() IN ('dean_of_studies', 'headteacher', 'it'))
   WITH CHECK (public.current_school_role() IN ('dean_of_studies', 'headteacher', 'it'));
 
 -- Gallery Items Policies
+DROP POLICY IF EXISTS gallery_public_read ON public.gallery_items;
 CREATE POLICY gallery_public_read ON public.gallery_items FOR SELECT TO anon, authenticated
   USING (status = 'Published' OR public.current_school_role() IN ('dean_of_studies', 'headteacher', 'it'));
+
+DROP POLICY IF EXISTS gallery_manage ON public.gallery_items;
 CREATE POLICY gallery_manage ON public.gallery_items FOR ALL TO authenticated
   USING (public.current_school_role() IN ('dean_of_studies', 'it'))
   WITH CHECK (public.current_school_role() IN ('dean_of_studies', 'it'));
 
 -- News Items Policies
+DROP POLICY IF EXISTS news_public_read ON public.news_items;
 CREATE POLICY news_public_read ON public.news_items FOR SELECT TO anon, authenticated
   USING (status = 'Published' OR public.current_school_role() IN ('dean_of_studies', 'headteacher', 'it'));
+
+DROP POLICY IF EXISTS news_manage ON public.news_items;
 CREATE POLICY news_manage ON public.news_items FOR ALL TO authenticated
   USING (public.current_school_role() IN ('dean_of_studies', 'it'))
   WITH CHECK (public.current_school_role() IN ('dean_of_studies', 'it'));

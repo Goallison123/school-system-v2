@@ -103,6 +103,11 @@ CREATE TABLE IF NOT EXISTS public.workspace_settings (
   CONSTRAINT workspace_settings_pkey PRIMARY KEY (id)
 );
 
+-- Seed singleton settings record if missing
+INSERT INTO public.workspace_settings (id, admin_name, default_notification_channel)
+VALUES ('00000000-0000-0000-0000-000000000001', 'GS Gacuba 2A Administration', 'SMS')
+ON CONFLICT (id) DO NOTHING;
+
 -- ============================================================================
 -- 5. STUDENT INFORMATION SYSTEM (SIS)
 -- ============================================================================
@@ -288,6 +293,22 @@ CREATE INDEX IF NOT EXISTS student_midterm_marks_class_idx ON public.student_mid
 CREATE INDEX IF NOT EXISTS student_midterm_marks_student_idx ON public.student_midterm_marks(student_id);
 CREATE INDEX IF NOT EXISTS student_midterm_marks_subject_idx ON public.student_midterm_marks(subject_id);
 
+-- Enforce unique student-subject-period mark entry for idempotent upserts
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conname = 'student_midterm_marks_period_student_subject_key'
+  ) THEN
+    ALTER TABLE public.student_midterm_marks
+      ADD CONSTRAINT student_midterm_marks_period_student_subject_key
+      UNIQUE (period_id, student_id, subject_id);
+  END IF;
+END $$;
+
+CREATE UNIQUE INDEX IF NOT EXISTS student_midterm_marks_period_student_subject_uidx
+  ON public.student_midterm_marks (period_id, student_id, subject_id);
+
 CREATE TABLE IF NOT EXISTS public.midterm_reports (
   id uuid NOT NULL DEFAULT gen_random_uuid(),
   student_id uuid,
@@ -324,6 +345,11 @@ CREATE INDEX IF NOT EXISTS midterm_reports_class_idx ON public.midterm_reports(c
 CREATE INDEX IF NOT EXISTS midterm_reports_student_idx ON public.midterm_reports(student_id);
 CREATE INDEX IF NOT EXISTS midterm_reports_review_idx ON public.midterm_reports(review_status);
 CREATE INDEX IF NOT EXISTS midterm_reports_token_hash_idx ON public.midterm_reports(access_token_hash);
+
+-- Unique index to prevent duplicate active reports for the same student in the same period
+CREATE UNIQUE INDEX IF NOT EXISTS midterm_reports_period_student_active_uidx
+  ON public.midterm_reports(period_id, student_id)
+  WHERE is_deleted = false;
 
 CREATE TABLE IF NOT EXISTS public.midterm_report_contacts (
   report_id uuid NOT NULL,
@@ -638,8 +664,134 @@ BEGIN
 END;
 $$;
 
+-- Function to issue secure parent report tokens
+CREATE OR REPLACE FUNCTION public.issue_midterm_report_tokens(p_report_ids uuid[])
+RETURNS TABLE (report_id uuid, token text, expires_at timestamptz)
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+  v_id uuid;
+  v_raw_token text;
+  v_hash text;
+  v_exp timestamptz;
+BEGIN
+  IF public.current_school_role() NOT IN ('dean_of_studies', 'headteacher', 'it') THEN
+    RAISE EXCEPTION 'Only school administrators can issue report access tokens' USING ERRCODE = '42501';
+  END IF;
+
+  v_exp := now() + interval '7 days';
+
+  FOREACH v_id IN ARRAY p_report_ids
+  LOOP
+    v_raw_token := encode(gen_random_bytes(24), 'hex');
+    v_hash := encode(digest(v_raw_token, 'sha256'), 'hex');
+
+    UPDATE public.midterm_reports
+    SET
+      access_token_hash = v_hash,
+      access_token_expires_at = v_exp
+    WHERE id = v_id;
+
+    report_id := v_id;
+    token := v_raw_token;
+    expires_at := v_exp;
+    RETURN NEXT;
+  END LOOP;
+END;
+$$;
+
+-- Function to verify parent report access token
+CREATE OR REPLACE FUNCTION public.verify_parent_report_token(
+  p_report_id uuid,
+  p_raw_token text
+)
+RETURNS boolean
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+  v_expected_hash text;
+  v_expires_at timestamptz;
+  v_provided_hash text;
+BEGIN
+  SELECT access_token_hash, access_token_expires_at
+  INTO v_expected_hash, v_expires_at
+  FROM public.midterm_reports
+  WHERE id = p_report_id AND is_deleted = false;
+
+  IF v_expected_hash IS NULL OR v_expires_at IS NULL THEN
+    RETURN false;
+  END IF;
+
+  IF v_expires_at < now() THEN
+    RETURN false;
+  END IF;
+
+  v_provided_hash := encode(digest(p_raw_token, 'sha256'), 'hex');
+  RETURN (v_expected_hash = v_provided_hash);
+END;
+$$;
+
+-- Function to purge expired report tokens and clear storage paths after 7 days
+CREATE OR REPLACE FUNCTION public.cleanup_expired_midterm_reports()
+RETURNS integer
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+  v_count integer;
+BEGIN
+  IF public.current_school_role() NOT IN ('dean_of_studies', 'it') THEN
+    RAISE EXCEPTION 'Only dean of studies or IT administrator can run cleanup' USING ERRCODE = '42501';
+  END IF;
+
+  UPDATE public.midterm_reports
+  SET
+    access_token_hash = NULL,
+    pdf_storage_path = NULL
+  WHERE access_token_expires_at IS NOT NULL
+    AND access_token_expires_at < now();
+
+  GET DIAGNOSTICS v_count = ROW_COUNT;
+  RETURN v_count;
+END;
+$$;
+
 -- ============================================================================
--- 12. ROW-LEVEL SECURITY & PERMISSIONS
+-- 12. STORAGE BUCKETS PROVISIONING
+-- ============================================================================
+INSERT INTO storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+VALUES (
+  'midterm-reports',
+  'midterm-reports',
+  false,
+  5242880,
+  ARRAY['application/pdf']
+)
+ON CONFLICT (id) DO UPDATE SET
+  public = EXCLUDED.public,
+  file_size_limit = EXCLUDED.file_size_limit,
+  allowed_mime_types = EXCLUDED.allowed_mime_types;
+
+INSERT INTO storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+VALUES (
+  'school-media',
+  'school-media',
+  true,
+  10485760,
+  ARRAY['image/png', 'image/jpeg', 'image/jpg', 'image/webp', 'image/gif']
+)
+ON CONFLICT (id) DO UPDATE SET
+  public = EXCLUDED.public,
+  file_size_limit = EXCLUDED.file_size_limit,
+  allowed_mime_types = EXCLUDED.allowed_mime_types;
+
+-- ============================================================================
+-- 13. ROW-LEVEL SECURITY & PERMISSIONS
 -- ============================================================================
 ALTER TABLE public.users ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.workspace_settings ENABLE ROW LEVEL SECURITY;
@@ -662,6 +814,8 @@ ALTER TABLE public.school_content ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.school_inquiries ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.gallery_items ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.news_items ENABLE ROW LEVEL SECURITY;
+
+ALTER TABLE storage.objects ENABLE ROW LEVEL SECURITY;
 
 REVOKE ALL ON ALL TABLES IN SCHEMA public FROM anon, authenticated;
 REVOKE ALL ON public.teacher_student_register FROM PUBLIC;
@@ -696,19 +850,71 @@ GRANT SELECT, UPDATE, DELETE ON public.school_inquiries TO authenticated;
 GRANT INSERT, UPDATE, DELETE ON public.gallery_items TO authenticated;
 GRANT INSERT, UPDATE, DELETE ON public.news_items TO authenticated;
 
+-- Storage Policies: Midterm Reports Bucket
+DROP POLICY IF EXISTS storage_midterm_reports_select ON storage.objects;
+CREATE POLICY storage_midterm_reports_select ON storage.objects FOR SELECT TO authenticated
+  USING (
+    bucket_id = 'midterm-reports'
+    AND (
+      public.current_school_role() IN ('dean_of_studies', 'headteacher', 'it')
+      OR public.current_school_role() = 'teacher'
+    )
+  );
+
+DROP POLICY IF EXISTS storage_midterm_reports_insert ON storage.objects;
+CREATE POLICY storage_midterm_reports_insert ON storage.objects FOR INSERT TO authenticated
+  WITH CHECK (
+    bucket_id = 'midterm-reports'
+    AND public.current_school_role() IN ('dean_of_studies', 'headteacher', 'it')
+  );
+
+DROP POLICY IF EXISTS storage_midterm_reports_modify ON storage.objects;
+CREATE POLICY storage_midterm_reports_modify ON storage.objects FOR ALL TO authenticated
+  USING (
+    bucket_id = 'midterm-reports'
+    AND public.current_school_role() IN ('dean_of_studies', 'it')
+  )
+  WITH CHECK (
+    bucket_id = 'midterm-reports'
+    AND public.current_school_role() IN ('dean_of_studies', 'it')
+  );
+
+-- Storage Policies: School Media Bucket
+DROP POLICY IF EXISTS storage_school_media_public_select ON storage.objects;
+CREATE POLICY storage_school_media_public_select ON storage.objects FOR SELECT TO anon, authenticated
+  USING (bucket_id = 'school-media');
+
+DROP POLICY IF EXISTS storage_school_media_manage ON storage.objects;
+CREATE POLICY storage_school_media_manage ON storage.objects FOR ALL TO authenticated
+  USING (
+    bucket_id = 'school-media'
+    AND public.current_school_role() IN ('dean_of_studies', 'it')
+  )
+  WITH CHECK (
+    bucket_id = 'school-media'
+    AND public.current_school_role() IN ('dean_of_studies', 'it')
+  );
+
 -- Policies: Users
+DROP POLICY IF EXISTS users_select_staff ON public.users;
 CREATE POLICY users_select_staff ON public.users FOR SELECT TO authenticated USING (true);
+
+DROP POLICY IF EXISTS users_update_it ON public.users;
 CREATE POLICY users_update_it ON public.users FOR UPDATE TO authenticated
   USING (id = (SELECT auth.uid()) OR public.current_school_role() = 'it')
   WITH CHECK (id = (SELECT auth.uid()) OR public.current_school_role() = 'it');
 
 -- Policies: Workspace Settings
+DROP POLICY IF EXISTS workspace_settings_select ON public.workspace_settings;
 CREATE POLICY workspace_settings_select ON public.workspace_settings FOR SELECT TO authenticated USING (true);
+
+DROP POLICY IF EXISTS workspace_settings_modify ON public.workspace_settings;
 CREATE POLICY workspace_settings_modify ON public.workspace_settings FOR ALL TO authenticated
   USING (public.current_school_role() IN ('dean_of_studies', 'headteacher', 'it'))
   WITH CHECK (public.current_school_role() IN ('dean_of_studies', 'headteacher', 'it'));
 
 -- Policies: Students
+DROP POLICY IF EXISTS students_read_authorized ON public.school_students;
 CREATE POLICY students_read_authorized ON public.school_students FOR SELECT TO authenticated
   USING (
     public.current_school_role() IN ('dean_of_studies', 'headteacher', 'it')
@@ -722,45 +928,59 @@ CREATE POLICY students_read_authorized ON public.school_students FOR SELECT TO a
     )
   );
 
+DROP POLICY IF EXISTS students_write_dean_or_it ON public.school_students;
 CREATE POLICY students_write_dean_or_it ON public.school_students FOR ALL TO authenticated
   USING (public.current_school_role() IN ('dean_of_studies', 'it'))
   WITH CHECK (public.current_school_role() IN ('dean_of_studies', 'it'));
 
 -- Policies: Student Archive
+DROP POLICY IF EXISTS archive_manage_dean_or_it ON public.school_students_archive;
 CREATE POLICY archive_manage_dean_or_it ON public.school_students_archive FOR ALL TO authenticated
   USING (public.current_school_role() IN ('dean_of_studies', 'it'))
   WITH CHECK (public.current_school_role() IN ('dean_of_studies', 'it'));
 
 -- Policies: Teacher Assignments
+DROP POLICY IF EXISTS assignments_read_authorized ON public.teacher_class_assignments;
 CREATE POLICY assignments_read_authorized ON public.teacher_class_assignments FOR SELECT TO authenticated
   USING (
     teacher_user_id = (SELECT auth.uid())
     OR public.current_school_role() IN ('dean_of_studies', 'headteacher', 'it')
   );
 
+DROP POLICY IF EXISTS assignments_manage_dean_or_it ON public.teacher_class_assignments;
 CREATE POLICY assignments_manage_dean_or_it ON public.teacher_class_assignments FOR ALL TO authenticated
   USING (public.current_school_role() IN ('dean_of_studies', 'it'))
   WITH CHECK (public.current_school_role() IN ('dean_of_studies', 'it'));
 
 -- Policies: Academic Periods
+DROP POLICY IF EXISTS periods_select ON public.midterm_periods;
 CREATE POLICY periods_select ON public.midterm_periods FOR SELECT TO authenticated USING (true);
+
+DROP POLICY IF EXISTS periods_write_dean_or_it ON public.midterm_periods;
 CREATE POLICY periods_write_dean_or_it ON public.midterm_periods FOR ALL TO authenticated
   USING (public.current_school_role() IN ('dean_of_studies', 'it'))
   WITH CHECK (public.current_school_role() IN ('dean_of_studies', 'it'));
 
 -- Policies: Academic Subjects
+DROP POLICY IF EXISTS subjects_select ON public.midterm_subjects;
 CREATE POLICY subjects_select ON public.midterm_subjects FOR SELECT TO authenticated USING (true);
+
+DROP POLICY IF EXISTS subjects_write_dean_or_it ON public.midterm_subjects;
 CREATE POLICY subjects_write_dean_or_it ON public.midterm_subjects FOR ALL TO authenticated
   USING (public.current_school_role() IN ('dean_of_studies', 'it'))
   WITH CHECK (public.current_school_role() IN ('dean_of_studies', 'it'));
 
 -- Policies: Midterm Settings
+DROP POLICY IF EXISTS settings_select ON public.midterm_settings;
 CREATE POLICY settings_select ON public.midterm_settings FOR SELECT TO authenticated USING (true);
+
+DROP POLICY IF EXISTS settings_write_dean_or_head ON public.midterm_settings;
 CREATE POLICY settings_write_dean_or_head ON public.midterm_settings FOR ALL TO authenticated
   USING (public.current_school_role() IN ('dean_of_studies', 'headteacher'))
   WITH CHECK (public.current_school_role() IN ('dean_of_studies', 'headteacher'));
 
 -- Policies: Student Marks
+DROP POLICY IF EXISTS marks_select ON public.student_midterm_marks;
 CREATE POLICY marks_select ON public.student_midterm_marks FOR SELECT TO authenticated
   USING (
     public.current_school_role() IN ('dean_of_studies', 'headteacher', 'it')
@@ -774,10 +994,12 @@ CREATE POLICY marks_select ON public.student_midterm_marks FOR SELECT TO authent
     )
   );
 
+DROP POLICY IF EXISTS marks_write_dean ON public.student_midterm_marks;
 CREATE POLICY marks_write_dean ON public.student_midterm_marks FOR ALL TO authenticated
   USING (public.current_school_role() = 'dean_of_studies')
   WITH CHECK (public.current_school_role() = 'dean_of_studies');
 
+DROP POLICY IF EXISTS marks_insert_teacher ON public.student_midterm_marks;
 CREATE POLICY marks_insert_teacher ON public.student_midterm_marks FOR INSERT TO authenticated
   WITH CHECK (
     public.current_school_role() = 'teacher'
@@ -788,6 +1010,7 @@ CREATE POLICY marks_insert_teacher ON public.student_midterm_marks FOR INSERT TO
     )
   );
 
+DROP POLICY IF EXISTS marks_update_teacher ON public.student_midterm_marks;
 CREATE POLICY marks_update_teacher ON public.student_midterm_marks FOR UPDATE TO authenticated
   USING (
     public.current_school_role() = 'teacher'
@@ -807,6 +1030,7 @@ CREATE POLICY marks_update_teacher ON public.student_midterm_marks FOR UPDATE TO
   );
 
 -- Policies: Reports
+DROP POLICY IF EXISTS reports_select ON public.midterm_reports;
 CREATE POLICY reports_select ON public.midterm_reports FOR SELECT TO authenticated
   USING (
     public.current_school_role() IN ('dean_of_studies', 'headteacher', 'it')
@@ -820,74 +1044,108 @@ CREATE POLICY reports_select ON public.midterm_reports FOR SELECT TO authenticat
     )
   );
 
+DROP POLICY IF EXISTS reports_write_dean_or_head ON public.midterm_reports;
 CREATE POLICY reports_write_dean_or_head ON public.midterm_reports FOR ALL TO authenticated
   USING (public.current_school_role() IN ('dean_of_studies', 'headteacher'))
   WITH CHECK (public.current_school_role() IN ('dean_of_studies', 'headteacher'));
 
 -- Policies: Report Contacts
+DROP POLICY IF EXISTS report_contacts_select ON public.midterm_report_contacts;
 CREATE POLICY report_contacts_select ON public.midterm_report_contacts FOR SELECT TO authenticated USING (true);
+
+DROP POLICY IF EXISTS report_contacts_write ON public.midterm_report_contacts;
 CREATE POLICY report_contacts_write ON public.midterm_report_contacts FOR ALL TO authenticated
   USING (public.current_school_role() IN ('dean_of_studies', 'headteacher', 'it'))
   WITH CHECK (public.current_school_role() IN ('dean_of_studies', 'headteacher', 'it'));
 
 -- Policies: Parent Notification Queue
+DROP POLICY IF EXISTS queue_select ON public.midterm_parent_notification_queue;
 CREATE POLICY queue_select ON public.midterm_parent_notification_queue FOR SELECT TO authenticated
   USING (public.current_school_role() IN ('dean_of_studies', 'headteacher', 'it'));
+
+DROP POLICY IF EXISTS queue_write ON public.midterm_parent_notification_queue;
 CREATE POLICY queue_write ON public.midterm_parent_notification_queue FOR ALL TO authenticated
   USING (public.current_school_role() IN ('dean_of_studies', 'headteacher', 'it'))
   WITH CHECK (public.current_school_role() IN ('dean_of_studies', 'headteacher', 'it'));
 
 -- Policies: School Contacts
+DROP POLICY IF EXISTS contacts_select ON public.school_contacts;
 CREATE POLICY contacts_select ON public.school_contacts FOR SELECT TO authenticated USING (true);
+
+DROP POLICY IF EXISTS contacts_manage ON public.school_contacts;
 CREATE POLICY contacts_manage ON public.school_contacts FOR ALL TO authenticated
   USING (public.current_school_role() IN ('dean_of_studies', 'headteacher', 'it'))
   WITH CHECK (public.current_school_role() IN ('dean_of_studies', 'headteacher', 'it'));
 
 -- Policies: Notification Campaigns
+DROP POLICY IF EXISTS campaigns_select ON public.notification_campaigns;
 CREATE POLICY campaigns_select ON public.notification_campaigns FOR SELECT TO authenticated USING (true);
+
+DROP POLICY IF EXISTS campaigns_manage ON public.notification_campaigns;
 CREATE POLICY campaigns_manage ON public.notification_campaigns FOR ALL TO authenticated
   USING (public.current_school_role() IN ('dean_of_studies', 'headteacher', 'it'))
   WITH CHECK (public.current_school_role() IN ('dean_of_studies', 'headteacher', 'it'));
 
 -- Policies: SMS Dispatches
+DROP POLICY IF EXISTS sms_dispatches_select ON public.sms_campaign_dispatches;
 CREATE POLICY sms_dispatches_select ON public.sms_campaign_dispatches FOR SELECT TO authenticated USING (true);
+
+DROP POLICY IF EXISTS sms_dispatches_insert ON public.sms_campaign_dispatches;
 CREATE POLICY sms_dispatches_insert ON public.sms_campaign_dispatches FOR ALL TO authenticated
   USING (public.current_school_role() IN ('dean_of_studies', 'headteacher', 'it'))
   WITH CHECK (public.current_school_role() IN ('dean_of_studies', 'headteacher', 'it'));
 
+DROP POLICY IF EXISTS midterm_dispatches_select ON public.midterm_sms_dispatches;
 CREATE POLICY midterm_dispatches_select ON public.midterm_sms_dispatches FOR SELECT TO authenticated USING (true);
+
+DROP POLICY IF EXISTS midterm_dispatches_insert ON public.midterm_sms_dispatches;
 CREATE POLICY midterm_dispatches_insert ON public.midterm_sms_dispatches FOR ALL TO authenticated
   USING (public.current_school_role() IN ('dean_of_studies', 'headteacher', 'it'))
   WITH CHECK (public.current_school_role() IN ('dean_of_studies', 'headteacher', 'it'));
 
 -- Policies: Outbox
+DROP POLICY IF EXISTS outbox_select ON public.midterm_notification_outbox;
 CREATE POLICY outbox_select ON public.midterm_notification_outbox FOR SELECT TO authenticated
   USING (public.current_school_role() IN ('dean_of_studies', 'headteacher', 'it'));
+
+DROP POLICY IF EXISTS outbox_insert ON public.midterm_notification_outbox;
 CREATE POLICY outbox_insert ON public.midterm_notification_outbox FOR INSERT TO authenticated WITH CHECK (true);
 
 -- Policies: Public CMS Content
+DROP POLICY IF EXISTS content_public_read ON public.school_content;
 CREATE POLICY content_public_read ON public.school_content FOR SELECT TO anon, authenticated
   USING (status = 'Published' OR public.current_school_role() IN ('dean_of_studies', 'headteacher', 'it'));
+
+DROP POLICY IF EXISTS content_manage ON public.school_content;
 CREATE POLICY content_manage ON public.school_content FOR ALL TO authenticated
   USING (public.current_school_role() IN ('dean_of_studies', 'it'))
   WITH CHECK (public.current_school_role() IN ('dean_of_studies', 'it'));
 
 -- Policies: Inquiries
+DROP POLICY IF EXISTS inquiries_public_insert ON public.school_inquiries;
 CREATE POLICY inquiries_public_insert ON public.school_inquiries FOR INSERT TO anon, authenticated WITH CHECK (true);
+
+DROP POLICY IF EXISTS inquiries_staff_manage ON public.school_inquiries;
 CREATE POLICY inquiries_staff_manage ON public.school_inquiries FOR ALL TO authenticated
   USING (public.current_school_role() IN ('dean_of_studies', 'headteacher', 'it'))
   WITH CHECK (public.current_school_role() IN ('dean_of_studies', 'headteacher', 'it'));
 
 -- Policies: Gallery
+DROP POLICY IF EXISTS gallery_public_read ON public.gallery_items;
 CREATE POLICY gallery_public_read ON public.gallery_items FOR SELECT TO anon, authenticated
   USING (status = 'Published' OR public.current_school_role() IN ('dean_of_studies', 'headteacher', 'it'));
+
+DROP POLICY IF EXISTS gallery_manage ON public.gallery_items;
 CREATE POLICY gallery_manage ON public.gallery_items FOR ALL TO authenticated
   USING (public.current_school_role() IN ('dean_of_studies', 'it'))
   WITH CHECK (public.current_school_role() IN ('dean_of_studies', 'it'));
 
 -- Policies: News
+DROP POLICY IF EXISTS news_public_read ON public.news_items;
 CREATE POLICY news_public_read ON public.news_items FOR SELECT TO anon, authenticated
   USING (status = 'Published' OR public.current_school_role() IN ('dean_of_studies', 'headteacher', 'it'));
+
+DROP POLICY IF EXISTS news_manage ON public.news_items;
 CREATE POLICY news_manage ON public.news_items FOR ALL TO authenticated
   USING (public.current_school_role() IN ('dean_of_studies', 'it'))
   WITH CHECK (public.current_school_role() IN ('dean_of_studies', 'it'));
@@ -897,5 +1155,8 @@ GRANT EXECUTE ON FUNCTION public.list_school_teachers() TO authenticated;
 GRANT EXECUTE ON FUNCTION public.list_teacher_class_assignments() TO authenticated;
 GRANT EXECUTE ON FUNCTION public.import_school_students(jsonb) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.set_midterm_report_pdf_metadata(uuid, text, text, timestamptz) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.issue_midterm_report_tokens(uuid[]) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.verify_parent_report_token(uuid, text) TO anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.cleanup_expired_midterm_reports() TO authenticated;
 
 COMMIT;

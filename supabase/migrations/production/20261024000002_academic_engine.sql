@@ -84,6 +84,22 @@ CREATE INDEX IF NOT EXISTS student_midterm_marks_class_idx ON public.student_mid
 CREATE INDEX IF NOT EXISTS student_midterm_marks_student_idx ON public.student_midterm_marks(student_id);
 CREATE INDEX IF NOT EXISTS student_midterm_marks_subject_idx ON public.student_midterm_marks(subject_id);
 
+-- Enforce unique student-subject-period mark entry for idempotent upserts
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conname = 'student_midterm_marks_period_student_subject_key'
+  ) THEN
+    ALTER TABLE public.student_midterm_marks
+      ADD CONSTRAINT student_midterm_marks_period_student_subject_key
+      UNIQUE (period_id, student_id, subject_id);
+  END IF;
+END $$;
+
+CREATE UNIQUE INDEX IF NOT EXISTS student_midterm_marks_period_student_subject_uidx
+  ON public.student_midterm_marks (period_id, student_id, subject_id);
+
 -- 5. Consolidated Mid-Term Report Cards -------------------------------------
 CREATE TABLE IF NOT EXISTS public.midterm_reports (
   id uuid NOT NULL DEFAULT gen_random_uuid(),
@@ -121,6 +137,11 @@ CREATE INDEX IF NOT EXISTS midterm_reports_class_idx ON public.midterm_reports(c
 CREATE INDEX IF NOT EXISTS midterm_reports_student_idx ON public.midterm_reports(student_id);
 CREATE INDEX IF NOT EXISTS midterm_reports_review_idx ON public.midterm_reports(review_status);
 CREATE INDEX IF NOT EXISTS midterm_reports_token_hash_idx ON public.midterm_reports(access_token_hash);
+
+-- Unique index to prevent duplicate active reports for the same student in the same period
+CREATE UNIQUE INDEX IF NOT EXISTS midterm_reports_period_student_active_uidx
+  ON public.midterm_reports(period_id, student_id)
+  WHERE is_deleted = false;
 
 -- Captured Parent Contact Information for Mid-Term Reports
 CREATE TABLE IF NOT EXISTS public.midterm_report_contacts (
@@ -184,6 +205,103 @@ BEGIN
 END;
 $$;
 
+-- Function to issue secure parent report tokens
+CREATE OR REPLACE FUNCTION public.issue_midterm_report_tokens(p_report_ids uuid[])
+RETURNS TABLE (report_id uuid, token text, expires_at timestamptz)
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+  v_id uuid;
+  v_raw_token text;
+  v_hash text;
+  v_exp timestamptz;
+BEGIN
+  IF public.current_school_role() NOT IN ('dean_of_studies', 'headteacher', 'it') THEN
+    RAISE EXCEPTION 'Only school administrators can issue report access tokens' USING ERRCODE = '42501';
+  END IF;
+
+  v_exp := now() + interval '7 days';
+
+  FOREACH v_id IN ARRAY p_report_ids
+  LOOP
+    v_raw_token := encode(gen_random_bytes(24), 'hex');
+    v_hash := encode(digest(v_raw_token, 'sha256'), 'hex');
+
+    UPDATE public.midterm_reports
+    SET
+      access_token_hash = v_hash,
+      access_token_expires_at = v_exp
+    WHERE id = v_id;
+
+    report_id := v_id;
+    token := v_raw_token;
+    expires_at := v_exp;
+    RETURN NEXT;
+  END LOOP;
+END;
+$$;
+
+-- Function to verify parent report access token
+CREATE OR REPLACE FUNCTION public.verify_parent_report_token(
+  p_report_id uuid,
+  p_raw_token text
+)
+RETURNS boolean
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+  v_expected_hash text;
+  v_expires_at timestamptz;
+  v_provided_hash text;
+BEGIN
+  SELECT access_token_hash, access_token_expires_at
+  INTO v_expected_hash, v_expires_at
+  FROM public.midterm_reports
+  WHERE id = p_report_id AND is_deleted = false;
+
+  IF v_expected_hash IS NULL OR v_expires_at IS NULL THEN
+    RETURN false;
+  END IF;
+
+  IF v_expires_at < now() THEN
+    RETURN false;
+  END IF;
+
+  v_provided_hash := encode(digest(p_raw_token, 'sha256'), 'hex');
+  RETURN (v_expected_hash = v_provided_hash);
+END;
+$$;
+
+-- Function to purge expired report tokens and clear storage paths after 7 days
+CREATE OR REPLACE FUNCTION public.cleanup_expired_midterm_reports()
+RETURNS integer
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+  v_count integer;
+BEGIN
+  IF public.current_school_role() NOT IN ('dean_of_studies', 'it') THEN
+    RAISE EXCEPTION 'Only dean of studies or IT administrator can run cleanup' USING ERRCODE = '42501';
+  END IF;
+
+  UPDATE public.midterm_reports
+  SET
+    access_token_hash = NULL,
+    pdf_storage_path = NULL
+  WHERE access_token_expires_at IS NOT NULL
+    AND access_token_expires_at < now();
+
+  GET DIAGNOSTICS v_count = ROW_COUNT;
+  RETURN v_count;
+END;
+$$;
+
 -- 7. Row-Level Security (RLS) & Policies ------------------------------------
 
 ALTER TABLE public.midterm_periods ENABLE ROW LEVEL SECURITY;
@@ -213,24 +331,34 @@ GRANT SELECT, INSERT, UPDATE, DELETE ON public.midterm_report_contacts TO authen
 GRANT SELECT, INSERT, UPDATE ON public.midterm_parent_notification_queue TO authenticated;
 
 -- Mid-Term Periods Policies
+DROP POLICY IF EXISTS periods_select ON public.midterm_periods;
 CREATE POLICY periods_select ON public.midterm_periods FOR SELECT TO authenticated USING (true);
+
+DROP POLICY IF EXISTS periods_write_dean_or_it ON public.midterm_periods;
 CREATE POLICY periods_write_dean_or_it ON public.midterm_periods FOR ALL TO authenticated
   USING (public.current_school_role() IN ('dean_of_studies', 'it'))
   WITH CHECK (public.current_school_role() IN ('dean_of_studies', 'it'));
 
 -- Subjects Policies
+DROP POLICY IF EXISTS subjects_select ON public.midterm_subjects;
 CREATE POLICY subjects_select ON public.midterm_subjects FOR SELECT TO authenticated USING (true);
+
+DROP POLICY IF EXISTS subjects_write_dean_or_it ON public.midterm_subjects;
 CREATE POLICY subjects_write_dean_or_it ON public.midterm_subjects FOR ALL TO authenticated
   USING (public.current_school_role() IN ('dean_of_studies', 'it'))
   WITH CHECK (public.current_school_role() IN ('dean_of_studies', 'it'));
 
 -- Settings Policies
+DROP POLICY IF EXISTS settings_select ON public.midterm_settings;
 CREATE POLICY settings_select ON public.midterm_settings FOR SELECT TO authenticated USING (true);
+
+DROP POLICY IF EXISTS settings_write_dean_or_head ON public.midterm_settings;
 CREATE POLICY settings_write_dean_or_head ON public.midterm_settings FOR ALL TO authenticated
   USING (public.current_school_role() IN ('dean_of_studies', 'headteacher'))
   WITH CHECK (public.current_school_role() IN ('dean_of_studies', 'headteacher'));
 
 -- Student Marks Policies
+DROP POLICY IF EXISTS marks_select ON public.student_midterm_marks;
 CREATE POLICY marks_select ON public.student_midterm_marks FOR SELECT TO authenticated
   USING (
     public.current_school_role() IN ('dean_of_studies', 'headteacher', 'it')
@@ -244,10 +372,12 @@ CREATE POLICY marks_select ON public.student_midterm_marks FOR SELECT TO authent
     )
   );
 
+DROP POLICY IF EXISTS marks_write_dean ON public.student_midterm_marks;
 CREATE POLICY marks_write_dean ON public.student_midterm_marks FOR ALL TO authenticated
   USING (public.current_school_role() = 'dean_of_studies')
   WITH CHECK (public.current_school_role() = 'dean_of_studies');
 
+DROP POLICY IF EXISTS marks_insert_teacher ON public.student_midterm_marks;
 CREATE POLICY marks_insert_teacher ON public.student_midterm_marks FOR INSERT TO authenticated
   WITH CHECK (
     public.current_school_role() = 'teacher'
@@ -258,6 +388,7 @@ CREATE POLICY marks_insert_teacher ON public.student_midterm_marks FOR INSERT TO
     )
   );
 
+DROP POLICY IF EXISTS marks_update_teacher ON public.student_midterm_marks;
 CREATE POLICY marks_update_teacher ON public.student_midterm_marks FOR UPDATE TO authenticated
   USING (
     public.current_school_role() = 'teacher'
@@ -277,6 +408,7 @@ CREATE POLICY marks_update_teacher ON public.student_midterm_marks FOR UPDATE TO
   );
 
 -- Midterm Reports Policies
+DROP POLICY IF EXISTS reports_select ON public.midterm_reports;
 CREATE POLICY reports_select ON public.midterm_reports FOR SELECT TO authenticated
   USING (
     public.current_school_role() IN ('dean_of_studies', 'headteacher', 'it')
@@ -290,23 +422,34 @@ CREATE POLICY reports_select ON public.midterm_reports FOR SELECT TO authenticat
     )
   );
 
+DROP POLICY IF EXISTS reports_write_dean_or_head ON public.midterm_reports;
 CREATE POLICY reports_write_dean_or_head ON public.midterm_reports FOR ALL TO authenticated
   USING (public.current_school_role() IN ('dean_of_studies', 'headteacher'))
   WITH CHECK (public.current_school_role() IN ('dean_of_studies', 'headteacher'));
 
 -- Report Contacts Policies
+DROP POLICY IF EXISTS report_contacts_select ON public.midterm_report_contacts;
 CREATE POLICY report_contacts_select ON public.midterm_report_contacts FOR SELECT TO authenticated USING (true);
+
+DROP POLICY IF EXISTS report_contacts_write ON public.midterm_report_contacts;
 CREATE POLICY report_contacts_write ON public.midterm_report_contacts FOR ALL TO authenticated
   USING (public.current_school_role() IN ('dean_of_studies', 'headteacher', 'it'))
   WITH CHECK (public.current_school_role() IN ('dean_of_studies', 'headteacher', 'it'));
 
 -- Parent Queue Policies
+DROP POLICY IF EXISTS queue_select ON public.midterm_parent_notification_queue;
 CREATE POLICY queue_select ON public.midterm_parent_notification_queue FOR SELECT TO authenticated
   USING (public.current_school_role() IN ('dean_of_studies', 'headteacher', 'it'));
+
+DROP POLICY IF EXISTS queue_write ON public.midterm_parent_notification_queue;
 CREATE POLICY queue_write ON public.midterm_parent_notification_queue FOR ALL TO authenticated
   USING (public.current_school_role() IN ('dean_of_studies', 'headteacher', 'it'))
   WITH CHECK (public.current_school_role() IN ('dean_of_studies', 'headteacher', 'it'));
 
+-- Function Grants
 GRANT EXECUTE ON FUNCTION public.set_midterm_report_pdf_metadata(uuid, text, text, timestamptz) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.issue_midterm_report_tokens(uuid[]) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.verify_parent_report_token(uuid, text) TO anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.cleanup_expired_midterm_reports() TO authenticated;
 
 COMMIT;
