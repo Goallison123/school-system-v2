@@ -165,7 +165,7 @@ export default function Students() {
   const [formData, setFormData] = useState(emptyForm);
   const [toast, setToast] = useState("");
   const [formError, setFormError] = useState("");
-  const [sendWelcomeNotice, setSendWelcomeNotice] = useState(true);
+  const [sendWelcomeNotice, setSendWelcomeNotice] = useState(false);
   const [archiveReason, setArchiveReason] = useState("");
   const [studentToArchive, setStudentToArchive] = useState<Student | null>(null);
   const csvInputRef = useRef<HTMLInputElement>(null);
@@ -309,8 +309,15 @@ export default function Students() {
       } else {
         newStudent = { ...formData, id: `STU-${Date.now().toString().slice(-4)}`, registryCode: code, lastUpdated: "Just now" };
       }
-      setStudents((curr) => [newStudent, ...curr]);
-      if (sendWelcomeNotice) void triggerStudentWelcomeNotification(newStudent);
+            setStudents((curr) => [newStudent, ...curr]);
+      if (sendWelcomeNotice) {
+        const confirmed = window.confirm(
+          `Send welcome SMS/Email to ${newStudent.parentName} (${newStudent.phone})?\n\nClick OK to send, Cancel to skip.`
+        );
+        if (confirmed) {
+          void triggerStudentWelcomeNotification(newStudent);
+        }
+      }
       notify(`Student ${newStudent.fullName} registered successfully.`);
       closeModal();
     } else if (modalStudent) {
@@ -546,7 +553,14 @@ export default function Students() {
               <div className="text-xs font-bold text-[#ea580c] pt-2 border-t border-slate-100">Parent & Fee Information</div>
               <div className="form-group-2col"><div className="form-row"><label className="form-label"><span className="req">*</span> Parent or guardian name</label><input type="text" value={formData.parentName} onChange={(e) => setFormData({ ...formData, parentName: e.target.value })} placeholder="e.g. Jean Bosco Mugisha" className="form-input" /></div><div className="form-row"><label className="form-label"><span className="req">*</span> Parent phone number</label><input type="text" value={formData.phone} onChange={(e) => setFormData({ ...formData, phone: e.target.value })} placeholder="+250 788 000 000" className="form-input" /></div></div>
               <div className="form-group-2col"><div className="form-row"><label className="form-label">Parent email address</label><input type="email" value={formData.email} onChange={(e) => setFormData({ ...formData, email: e.target.value })} placeholder="parent@example.com" className="form-input" /></div><div className="form-row"><label className="form-label">Term tuition amount</label><input type="text" value={formData.feeAmount} onChange={(e) => setFormData({ ...formData, feeAmount: e.target.value })} placeholder="24,000 RWF" className="form-input" /></div></div>
-              {isAddMode && (<div className="pt-2 border-t border-slate-100 flex items-center gap-2"><input type="checkbox" id="autoWelcomeCheckbox" checked={sendWelcomeNotice} onChange={(e) => setSendWelcomeNotice(e.target.checked)} className="accent-[#ea580c] h-4 w-4" /><label htmlFor="autoWelcomeCheckbox" className="text-xs text-slate-700 cursor-pointer font-medium">Send welcome message to parent via SMS and email</label></div>)}
+                            {isAddMode && (
+                <div className="pt-3 border-t border-amber-200 bg-amber-50 p-2 rounded flex items-start gap-2">
+                  <input type="checkbox" id="autoWelcomeCheckbox" checked={sendWelcomeNotice} onChange={(e) => setSendWelcomeNotice(e.target.checked)} className="accent-[#ea580c] h-4 w-4 mt-0.5" />
+                  <label htmlFor="autoWelcomeCheckbox" className="text-xs text-slate-700 cursor-pointer font-medium leading-tight">
+                    Send welcome message to parent via SMS and email
+                  </label>
+                </div>
+              )}
               {formError && (<p className="text-xs text-red-600 font-semibold mt-1">{formError}</p>)}
             </div>
             <div className="modal-footer-bar"><button type="button" onClick={closeModal} className="btn-enterprise-cancel">Cancel</button><button type="button" onClick={handleSaveModal} className="btn-enterprise-save"><Save size={14} /> {isAddMode ? "Save student" : "Save changes"}</button></div>

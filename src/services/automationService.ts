@@ -1,6 +1,7 @@
 /**
- * School Automated Messaging & Automation Rules Engine
- * Handles automated triggers for SMS (via Africa's Talking) and Email (Free Tool TBD)
+ * School Messaging & Manual Campaign Rules Engine
+ * FIXED: No unsupervised automations - all triggers require explicit user action
+ * All automation rules are DISABLED by default
  */
 
 import { sendAfricasTalkingBulkSMS } from './africasTalkingService';
@@ -37,42 +38,43 @@ export interface AutomationRule {
 const RULES_STORAGE_KEY = 'gs_gacuba_automation_rules';
 const LOGS_STORAGE_KEY = 'gs_gacuba_automation_logs';
 
+// FIX 1: All rules DISABLED by default - requires manual enable in UI
 export const DEFAULT_RULES: AutomationRule[] = [
   {
     id: 'auto_fees',
-    name: 'Automated Tuition Balance Reminders',
-    description: 'Scans student registry for unpaid balances and notifies parents via Africa\'s Talking SMS and Email.',
-    enabled: true,
+    name: 'Tuition Balance Reminders (Manual Only)',
+    description: 'Manual trigger only - scans for unpaid balances when you click Run in Campaigns.',
+    enabled: false,
     channel: 'BOTH',
     templateSMS: 'Muraho {PARENT_NAME}, G.S GACUBA 2A irabibutsa ko amafaranga y\'ishuri asigaye kuri {STUDENT_NAME} ({CLASS_STREAM}) ari {FEES} RWF. Mwakwishyura kuri MoMo/Bank.',
-    templateEmail: 'Dear {PARENT_NAME}, this is an automated reminder from G.S Gacuba 2A. The remaining tuition fee balance for {STUDENT_NAME} ({CLASS_STREAM}) is {FEES} RWF. Please ensure timely clearance.',
+    templateEmail: 'Dear {PARENT_NAME}, this is a reminder from G.S Gacuba 2A. The remaining tuition fee balance for {STUDENT_NAME} ({CLASS_STREAM}) is {FEES} RWF.',
   },
   {
     id: 'auto_welcome',
-    name: 'New Student Enrollment Welcome',
-    description: 'Dispatches instant confirmation SMS & Email when a new student is registered into the school database.',
-    enabled: true,
+    name: 'New Student Enrollment Welcome (Manual Opt-In)',
+    description: 'Only sends if you explicitly check "Send welcome message" when registering a student.',
+    enabled: false,
     channel: 'BOTH',
     templateSMS: 'G.S Gacuba 2A: {STUDENT_NAME} yanditswe neza muri {CLASS_STREAM}. Code y\'umunyeshuri: {REG_CODE}. Murakaza neza!',
     templateEmail: 'Dear {PARENT_NAME}, welcome to G.S Gacuba 2A. Your child {STUDENT_NAME} has been officially registered into {CLASS_STREAM} with Registry Code {REG_CODE}.',
   },
   {
     id: 'auto_report',
-    name: 'Academic Mid-Term Marks & Report Notification',
-    description: 'Broadcasts report card download links to parents when examination marks are locked or published.',
-    enabled: true,
+    name: 'Academic Mid-Term Marks Notification (Manual Only)',
+    description: 'Only sends when you explicitly click Publish Reports in Mid-Term Engine.',
+    enabled: false,
     channel: 'BOTH',
     templateSMS: 'G.S Gacuba 2A: Raporo y\'amasomo ya {STUDENT_NAME} iriteguye. Kanda hano uyirebe: {REPORT_LINK}',
-    templateEmail: 'Dear {PARENT_NAME}, the mid-term academic report card for {STUDENT_NAME} ({CLASS_STREAM}) is now accessible online. Access token: {REG_CODE}.',
+    templateEmail: 'Dear {PARENT_NAME}, the mid-term report for {STUDENT_NAME} ({CLASS_STREAM}) is now accessible. Access token: {REG_CODE}.',
   },
   {
     id: 'auto_inquiry',
     name: 'Visitor Inquiry Auto-Acknowledgment',
-    description: 'Sends instant automated reply confirming receipt of parent messages or admissions inquiries.',
-    enabled: true,
+    description: 'Manual opt-in only. No automatic reply unless enabled.',
+    enabled: false,
     channel: 'EMAIL',
     templateSMS: 'G.S Gacuba 2A: Ubutumwa bwanyu bwakiriwe. Ubuyobozi bw\'ikigo burabusubiza mu masaha 24.',
-    templateEmail: 'Dear {VISITOR_NAME}, thank you for contacting G.S Gacuba 2A regarding "{TOPIC}". Our administration has received your message and will respond shortly.',
+    templateEmail: 'Dear {VISITOR_NAME}, thank you for contacting G.S Gacuba 2A regarding "{TOPIC}". Our administration will respond shortly.',
   },
 ];
 
@@ -100,6 +102,7 @@ export function saveAutomationRules(rules: AutomationRule[]): void {
   }
 }
 
+// FIX 2: Removed fake seed logs - returns empty array
 export function getDispatchLogs(): AutomatedMessageLog[] {
   try {
     const raw = localStorage.getItem(LOGS_STORAGE_KEY);
@@ -109,36 +112,7 @@ export function getDispatchLogs(): AutomatedMessageLog[] {
   } catch (err) {
     console.warn('Failed to load logs', err);
   }
-  return [
-    {
-      id: 'log-seed-1',
-      timestamp: new Date(Date.now() - 3600000 * 4).toISOString(),
-      channel: 'BOTH',
-      category: 'FEES',
-      title: 'Automated Remaining Fees Reminder',
-      previewMessage: 'Muraho Parent, G.S GACUBA 2A irabibutsa ko amafaranga y\'ishuri asigaye...',
-      recipientCount: 24,
-      recipientDetails: '24 parents with remaining balance > 0 RWF',
-      smsStatus: 'Sent (101)',
-      smsCost: 'RWF 288.00',
-      smsMessageId: 'ATXid_gw_78821',
-      emailStatus: 'Delivered',
-      emailProvider: 'Free Email Tool',
-    },
-    {
-      id: 'log-seed-2',
-      timestamp: new Date(Date.now() - 3600000 * 24).toISOString(),
-      channel: 'SMS',
-      category: 'ANNOUNCEMENT',
-      title: 'PTA General Assembly Circular',
-      previewMessage: 'Dear Parents, please be informed that G.S Gacuba 2A will hold a general PTA meeting...',
-      recipientCount: 120,
-      recipientDetails: 'All registered parents',
-      smsStatus: 'Sent (101)',
-      smsCost: 'RWF 1,440.00',
-      smsMessageId: 'ATXid_gw_78119',
-    },
-  ];
+  return [];
 }
 
 export function addDispatchLog(log: Omit<AutomatedMessageLog, 'id' | 'timestamp'>): AutomatedMessageLog {
@@ -147,7 +121,6 @@ export function addDispatchLog(log: Omit<AutomatedMessageLog, 'id' | 'timestamp'
     id: `log-${Date.now()}`,
     timestamp: new Date().toISOString(),
   };
-
   try {
     const existing = getDispatchLogs();
     const updated = [newLog, ...existing].slice(0, 100);
@@ -155,12 +128,11 @@ export function addDispatchLog(log: Omit<AutomatedMessageLog, 'id' | 'timestamp'
   } catch (err) {
     console.error('Failed to append log', err);
   }
-
   return newLog;
 }
 
 /**
- * Execute automated Tuition Balance Reminders
+ * Manual Only: Tuition Balance Reminders - Must be explicitly clicked in UI
  */
 export async function runAutomatedFeeReminders(
   students: Array<{
@@ -179,7 +151,13 @@ export async function runAutomatedFeeReminders(
   emailSent: number;
   totalCostRwf: string;
 }> {
-  // Filter students with pending balance
+  // FIX 3: Block if rule is disabled
+  const rules = getAutomationRules();
+  const feeRule = rules.find((r) => r.id === 'auto_fees');
+  if (!feeRule || !feeRule.enabled) {
+    throw new Error('Fee reminder automation is DISABLED. Enable it in Campaigns > Automation Rules first.');
+  }
+
   const targetStudents = students.filter((s) => {
     const isUnpaid = s.feeStatus.toLowerCase().includes('unpaid') ||
                      s.feeStatus.toLowerCase().includes('partial') ||
@@ -189,46 +167,31 @@ export async function runAutomatedFeeReminders(
   });
 
   if (targetStudents.length === 0) {
-    throw new Error('No students with outstanding fee balances found in registry.');
+    throw new Error('No students with outstanding fee balances found.');
   }
-
-  const rules = getAutomationRules();
-  const feeRule = rules.find((r) => r.id === 'auto_fees') || DEFAULT_RULES[0];
 
   const phones: string[] = [];
   const emails: Array<{ email: string; name: string; studentName: string }> = [];
 
   for (const s of targetStudents) {
-    if (s.phone && s.phone.trim()) {
-      phones.push(s.phone);
-    }
+    if (s.phone && s.phone.trim()) phones.push(s.phone);
     if (s.email && s.email.includes('@')) {
-      emails.push({
-        email: s.email,
-        name: s.parentName,
-        studentName: s.fullName,
-      });
+      emails.push({ email: s.email, name: s.parentName, studentName: s.fullName });
     }
   }
 
   let smsResult;
   let emailResult;
 
-  // 1. Dispatch Africa's Talking SMS
   if (feeRule.channel === 'SMS' || feeRule.channel === 'BOTH') {
     const sampleMsg = feeRule.templateSMS
       .replace('{PARENT_NAME}', 'Parent')
       .replace('{STUDENT_NAME}', 'Student')
       .replace('{CLASS_STREAM}', 'Class')
       .replace('{FEES}', 'balance');
-
-    smsResult = await sendAfricasTalkingBulkSMS({
-      to: phones,
-      message: sampleMsg,
-    });
+    smsResult = await sendAfricasTalkingBulkSMS({ to: phones, message: sampleMsg });
   }
 
-  // 2. Dispatch Free Email Tool
   if (feeRule.channel === 'EMAIL' || feeRule.channel === 'BOTH') {
     if (emails.length > 0) {
       emailResult = await sendBulkEmail({
@@ -243,14 +206,13 @@ export async function runAutomatedFeeReminders(
     }
   }
 
-  // Record Audit Log
   addDispatchLog({
     channel: feeRule.channel,
     category: 'FEES',
-    title: 'Automated Tuition Balance Reminders',
+    title: 'Manual Tuition Balance Reminders',
     previewMessage: feeRule.templateSMS.slice(0, 100) + '...',
     recipientCount: targetStudents.length,
-    recipientDetails: `${targetStudents.length} parents with pending balance (${phones.length} SMS, ${emails.length} Emails)`,
+    recipientDetails: `${targetStudents.length} parents with pending balance`,
     smsStatus: smsResult ? 'Sent (101)' : 'Skipped',
     smsCost: smsResult?.totalCost || 'RWF 0.00',
     smsMessageId: smsResult?.recipients[0]?.messageId,
@@ -258,7 +220,6 @@ export async function runAutomatedFeeReminders(
     emailProvider: 'Free Email Tool',
   });
 
-  // Update rule lastRun
   const updatedRules = rules.map((r) => r.id === 'auto_fees' ? { ...r, lastRun: new Date().toISOString() } : r);
   saveAutomationRules(updatedRules);
 
@@ -270,9 +231,6 @@ export async function runAutomatedFeeReminders(
   };
 }
 
-/**
- * Execute automated New Student Enrollment Welcome Notification
- */
 export async function triggerStudentWelcomeNotification(student: {
   fullName: string;
   parentName: string;
@@ -284,6 +242,7 @@ export async function triggerStudentWelcomeNotification(student: {
 }): Promise<void> {
   const rules = getAutomationRules();
   const rule = rules.find((r) => r.id === 'auto_welcome');
+  // FIX 4: Strict guard - disabled = no send
   if (!rule || !rule.enabled) return;
 
   const classStream = `${student.studentClass} ${student.stream || ''}`.trim();
@@ -305,14 +264,10 @@ export async function triggerStudentWelcomeNotification(student: {
 
   if ((rule.channel === 'SMS' || rule.channel === 'BOTH') && student.phone) {
     try {
-      const res = await sendAfricasTalkingBulkSMS({
-        to: [student.phone],
-        message: smsText,
-      });
+      const res = await sendAfricasTalkingBulkSMS({ to: [student.phone], message: smsText });
       smsStatus = 'Sent (101)';
       cost = res.totalCost;
     } catch (err) {
-      console.warn('Welcome SMS failed', err);
       smsStatus = 'Failed';
     }
   }
@@ -326,7 +281,6 @@ export async function triggerStudentWelcomeNotification(student: {
       });
       emailStatus = 'Delivered';
     } catch (err) {
-      console.warn('Welcome Email failed', err);
       emailStatus = 'Failed';
     }
   }
@@ -334,7 +288,7 @@ export async function triggerStudentWelcomeNotification(student: {
   addDispatchLog({
     channel: rule.channel,
     category: 'WELCOME',
-    title: `Student Enrollment Welcome: ${student.fullName}`,
+    title: `Student Welcome: ${student.fullName}`,
     previewMessage: smsText,
     recipientCount: 1,
     recipientDetails: `${student.parentName} (${student.phone || student.email})`,
@@ -345,9 +299,6 @@ export async function triggerStudentWelcomeNotification(student: {
   });
 }
 
-/**
- * Execute automated Inquiry Auto-Reply
- */
 export async function triggerInquiryAutoReply(inquiry: Inquiry): Promise<void> {
   const rules = getAutomationRules();
   const rule = rules.find((r) => r.id === 'auto_inquiry');
@@ -364,11 +315,10 @@ export async function triggerInquiryAutoReply(inquiry: Inquiry): Promise<void> {
         subject: `G.S Gacuba 2A Inquiry Acknowledgment: ${inquiry.topic || 'Message Received'}`,
         message: emailText,
       });
-
       addDispatchLog({
         channel: 'EMAIL',
         category: 'INQUIRY',
-        title: `Inquiry Auto-Reply: ${inquiry.visitor_name}`,
+        title: `Inquiry Reply: ${inquiry.visitor_name}`,
         previewMessage: emailText,
         recipientCount: 1,
         recipientDetails: `${inquiry.visitor_name} <${inquiry.email}>`,
