@@ -442,32 +442,32 @@ export default function MidTermEngine({ role, userId, notify }: Props) {
   }
 
   return (
-    <div className="space-y-6 max-w-[1400px] mx-auto text-stone-800">
-      <div className="text-center">
-        <h1 className="text-lg font-bold tracking-wide">Mid-term engine</h1>
-        <div className="mt-2 flex justify-center">
-          <div className="flex items-center gap-2 rounded-lg border bg-white px-3 py-1.5">
-            <span className="text-[11px] font-bold uppercase text-stone-500">Assessment period</span>
-            <select value={selectedPeriodId} onChange={(e) => setSelectedPeriodId(e.target.value)} className="min-w-[220px] rounded border px-2 py-1 text-sm">
+    <div className="space-y-4 sm:space-y-6 max-w-[1400px] mx-auto text-stone-800 px-3 sm:px-4 pb-20">
+      <div className="text-left sm:text-center">
+        <h1 className="text-[15px] sm:text-lg font-bold tracking-wide">Mid-term engine</h1>
+        <div className="mt-3 flex flex-col sm:flex-row sm:justify-center gap-2">
+          <div className="flex flex-col sm:flex-row sm:items-center gap-2 rounded-xl border bg-white p-3 sm:px-3 sm:py-1.5">
+            <span className="text-[10px] font-bold uppercase tracking-widest text-stone-500">Assessment period</span>
+            <select value={selectedPeriodId} onChange={(e) => setSelectedPeriodId(e.target.value)} className="w-full sm:min-w-[220px] rounded-lg border px-3 py-2.5 text-sm">
               {periods.map((p) => <option key={p.id} value={p.id}>{p.name} - {p.official_date} ({p.status})</option>)}
               {!periods.length && <option>No periods</option>}
             </select>
-            {selectedPeriod && <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-bold ${isFinalized ? 'bg-stone-100' : 'bg-emerald-50 text-emerald-700'}`}>{isFinalized ? <LockKeyhole size={10} /> : <UnlockKeyhole size={10} />}{selectedPeriod.status}</span>}
+            {selectedPeriod && <span className={`inline-flex w-fit items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-bold ${isFinalized ? 'bg-stone-100' : 'bg-emerald-50 text-emerald-700'}`}>{isFinalized ? <LockKeyhole size={10} /> : <UnlockKeyhole size={10} />}{selectedPeriod.status}</span>}
           </div>
         </div>
       </div>
 
       {error && <div className="mx-auto max-w-3xl flex gap-2 rounded-lg border border-red-200 bg-red-50 p-3 text-xs text-red-700"><AlertCircle size={14} />{error}</div>}
 
-      <div className="grid grid-cols-12 gap-4">
-        <div className="col-span-12 lg:col-span-3 space-y-3">
+      <div className="flex flex-col lg:grid lg:grid-cols-12 gap-4">
+        <div className="lg:col-span-3 space-y-3 order-1">
           <div className="rounded-lg border bg-white p-3">
             <h3 className="text-xs font-bold uppercase">New mid-term</h3>
             <div className="mt-2 space-y-2">
-              <input value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="Name e.g Term 1 2026" className="w-full rounded border px-2 py-1.5 text-sm" />
-              <input type="date" value={newDate} onChange={(e) => setNewDate(e.target.value)} className="w-full rounded border px-2 py-1.5 text-sm" />
-              <button onClick={() => void createPeriod()} disabled={busy || !newName.trim() || !newDate || !isDean} className="w-full rounded bg-[#3b2314] py-1.5 text-xs font-semibold text-white disabled:opacity-40">Create</button>
-            </div>
+              <input value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="Name e.g Term 1 2026" className="w-full rounded-lg border px-3 py-2.5 text-[13px]" />
+              <input type="date" value={newDate} onChange={(e) => setNewDate(e.target.value)} className="w-full rounded-lg border px-3 py-2.5 text-[13px]" />
+              <button onClick={() => void createPeriod()} disabled={busy || !newName.trim() || !newDate || !isDean} className="w-full rounded-lg bg-[#3b2314] py-2.5 text-[13px] font-semibold text-white disabled:opacity-40">Create</button>
+              </div>
           </div>
 
           <div className="rounded-lg border bg-white p-3">
@@ -499,7 +499,7 @@ export default function MidTermEngine({ role, userId, notify }: Props) {
           </div>
         </div>
 
-        <div className="col-span-12 lg:col-span-9">
+        <div className="lg:col-span-9 order-2">
           <div className="rounded-lg border bg-white">
             <div className="flex items-center justify-between border-b p-3">
               <h2 className="text-sm font-bold">Marks register - {selectedClass}</h2>
@@ -509,10 +509,15 @@ export default function MidTermEngine({ role, userId, notify }: Props) {
               </div>
             </div>
 
-            <div className="overflow-x-auto">
-              <table className="w-full min-w-[700px] text-left text-sm">
-                <thead className="bg-stone-50 text-[11px] uppercase text-stone-500">
-                  <tr><th className="px-3 py-2">Student</th>{classSubjects.map((s) => <th key={s.id} className="px-3 py-2">{s.subject_name}</th>)}<th className="px-3 py-2">Avg</th></tr>
+    {/*DESKTOP*/}
+            <div className="hidden md:block overflow-x-auto">
+              <table className="w-full text-left text-sm border-collapse">
+                <thead className="bg-stone-50 text-[11px] uppercase tracking-widest text-stone-500">
+                  <tr>
+                    <th className="px-3 py-2.5">Student</th>
+                    {classSubjects.map((s) => <th key={s.id} className="px-3 py-2.5 whitespace-nowrap">{s.subject_name}</th>)}
+                    <th className="px-3 py-2.5">Avg</th>
+                  </tr>
                 </thead>
                 <tbody className="divide-y">
                   {pagedMarks.map((stu) => {
@@ -520,21 +525,21 @@ export default function MidTermEngine({ role, userId, notify }: Props) {
                     const avg = sm.length ? (sm.reduce((a, b) => a + Number(b.mark), 0) / sm.length).toFixed(1) : '—';
                     return (
                       <tr key={stu.id} className="hover:bg-stone-50/70">
-                        <td className="px-3 py-2 font-medium">{stu.full_name}</td>
+                        <td className="px-3 py-2.5 font-medium whitespace-nowrap">{stu.full_name}</td>
                         {classSubjects.map((sub) => {
                           const mk = sm.find((m) => m.subject_id === sub.id);
                           const edit = editing?.studentId === stu.id && editing?.subjectId === sub.id;
                           return (
                             <td key={sub.id} className="px-3 py-2">
                               {edit ? (
-                                <div className="flex gap-1">
-                                  <input autoFocus value={editing.value} onChange={(e) => setEditing({ ...editing, value: e.target.value })} onKeyDown={(e) => { if (e.key === 'Enter') void saveMark(stu.id, sub.id, editing.value); if (e.key === 'Escape') setEditing(null); }} className="w-16 rounded border border-amber-400 px-1.5 py-1 text-xs" />
-                                  <button onClick={() => void saveMark(stu.id, sub.id, editing.value)} className="rounded bg-emerald-600 px-1.5 text-white"><CheckCircle2 size={12} /></button>
+                                <div className="flex items-center gap-1">
+                                  <input autoFocus type="number" value={editing.value} onChange={(e) => setEditing({ ...editing, value: e.target.value })} onKeyDown={(e) => { if (e.key === 'Enter') void saveMark(stu.id, sub.id, editing.value); if (e.key === 'Escape') setEditing(null); }} className="w-16 rounded border border-amber-400 px-2 py-1 text-sm" />
+                                  <button onClick={() => void saveMark(stu.id, sub.id, editing.value)} className="rounded bg-emerald-600 p-1 text-white"><CheckCircle2 size={14} /></button>
                                 </div>
                               ) : (
                                 <div className="group flex items-center gap-1">
-                                  <span className={mk ? 'font-semibold' : 'text-stone-400'}>{mk ? Number(mk.mark) : '—'}</span>
-                                  {canEditMarks && <span className="hidden group-hover:flex gap-1"><button onClick={() => setEditing({ studentId: stu.id, subjectId: sub.id, value: mk ? String(mk.mark) : '' })} className="rounded p-1 hover:bg-stone-100"><Pencil size={12} /></button>{mk && <button onClick={() => void removeMark(stu.id, sub.id)} className="rounded p-1 text-red-600 hover:bg-red-50"><Trash2 size={12} /></button>}</span>}
+                                  <span className={`font-mono ${mk ? 'font-semibold' : 'text-stone-400'}`}>{mk ? Number(mk.mark) : '—'}</span>
+                                  {canEditMarks && <span className="hidden group-hover:flex gap-0.5"><button onClick={() => setEditing({ studentId: stu.id, subjectId: sub.id, value: mk ? String(mk.mark) : '' })} className="rounded p-1 text-stone-400 hover:bg-stone-100"><Pencil size={12} /></button>{mk && <button onClick={() => void removeMark(stu.id, sub.id)} className="rounded p-1 text-red-500 hover:bg-red-50"><Trash2 size={12} /></button>}</span>}
                                 </div>
                               )}
                             </td>
@@ -544,45 +549,116 @@ export default function MidTermEngine({ role, userId, notify }: Props) {
                       </tr>
                     );
                   })}
-                  {!pagedMarks.length && <tr><td colSpan={classSubjects.length + 2} className="py-10 text-center text-sm text-stone-500">{classSubjects.length ? 'No students' : 'No subjects enabled for this class'}</td></tr>}
                 </tbody>
               </table>
             </div>
 
-            <div className="flex items-center justify-between border-t p-2.5 text-xs">
-              <span className="text-stone-500">{classStudents.length} students - {classSubjects.length} subjects - Page {marksPage}/{marksTotalPages}</span>
-              <div className="flex gap-1">
-                <button disabled={marksPage <= 1} onClick={() => setMarksPage((p) => p - 1)} className="rounded border px-2 py-1 disabled:opacity-40"><ChevronLeft size={14} /></button>
-                <button disabled={marksPage >= marksTotalPages} onClick={() => setMarksPage((p) => p + 1)} className="rounded border px-3 py-1 font-medium disabled:opacity-40">Next <ChevronRight size={12} className="inline" /></button>
+          {/*MOBILE*/}
+            <div className="md:hidden divide-y">
+              {pagedMarks.map((stu) => {
+                const sm = periodMarks.filter((m) => m.student_id === stu.id);
+                const avg = sm.length ? (sm.reduce((a, b) => a + Number(b.mark), 0) / sm.length).toFixed(1) : '—';
+                return (
+                  <div key={stu.id} className="p-3.5 bg-white">
+                    <div className="flex justify-between items-center">
+                      <p className="font-semibold text-[13px] text-stone-900 leading-tight">{stu.full_name}</p>
+                      <span className="text-[11px] font-mono font-bold bg-stone-900 text-white px-2 py-0.5 rounded">Avg {avg}</span>
+                    </div>
+                    <div className="mt-3 grid grid-cols-1 gap-2">
+                      {classSubjects.map((sub) => {
+                        const mk = sm.find((m) => m.subject_id === sub.id);
+                        const edit = editing?.studentId === stu.id && editing?.subjectId === sub.id;
+                        return (
+                          <div key={sub.id} className="flex items-center justify-between rounded-lg border border-stone-200 px-3 py-2.5 bg-stone-50/50">
+                            <span className="text-[11px] font-semibold uppercase tracking-wide text-stone-600">{sub.subject_name}</span>
+                            {edit ? (
+                              <div className="flex items-center gap-2">
+                                <input autoFocus type="number" value={editing.value} onChange={(e) => setEditing({ ...editing, value: e.target.value })} className="w-20 rounded-lg border-2 border-amber-400 px-2 py-1.5 text-sm" />
+                                <button onClick={() => void saveMark(stu.id, sub.id, editing.value)} className="h-9 w-9 rounded-lg bg-emerald-600 text-white flex items-center justify-center"><CheckCircle2 size={16} /></button>
+                              </div>
+                            ) : (
+                              <div className="flex items-center gap-2">
+                                <span className={`text-[14px] font-mono font-bold ${mk ? 'text-stone-900' : 'text-stone-400'}`}>{mk ? Number(mk.mark) : '—'}</span>
+                                {canEditMarks && <button onClick={() => setEditing({ studentId: stu.id, subjectId: sub.id, value: mk ? String(mk.mark) : '' })} className="h-9 w-9 rounded-lg bg-white border flex items-center justify-center text-stone-600"><Pencil size={14} /></button>}
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                      {!classSubjects.length && <p className="text-[12px] text-stone-500 py-2">No subjects enabled</p>}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-t p-3 text-[11px]">
+              <span className="text-stone-500">Showing {(marksPage-1)*PAGE_SIZE+1}-{Math.min(marksPage*PAGE_SIZE, classStudents.length)} of {classStudents.length} • Page {marksPage}/{marksTotalPages}</span>
+              <div className="flex gap-2 w-full sm:w-auto">
+                <button disabled={marksPage <= 1} onClick={() => setMarksPage((p) => p - 1)} className="flex-1 sm:flex-none h-10 rounded-lg border bg-white px-4 font-medium disabled:opacity-40 flex items-center justify-center gap-1"><ChevronLeft size={14}/> Prev</button>
+                <button disabled={marksPage >= marksTotalPages} onClick={() => setMarksPage((p) => p + 1)} className="flex-1 sm:flex-none h-10 rounded-lg border bg-white px-4 font-medium disabled:opacity-40 flex items-center justify-center gap-1">Next <ChevronRight size={14}/></button>
               </div>
             </div>
           </div>
         </div>
       </div>
 
-      <div className="rounded-lg border bg-white">
-        <div className="flex flex-wrap items-center justify-between gap-2 border-b p-3">
-          <h2 className="text-sm font-bold">Reports and history</h2>
-          <button onClick={() => void sendNotices()} disabled={sending || !isFinalized || !periodReports.length || !isDean} className="rounded bg-emerald-700 px-4 py-1.5 text-xs font-semibold text-white disabled:opacity-40"><Send size={12} className="inline mr-1" />{sending ? 'Sending...' : 'Send to parents'}</button>
+            <div className="rounded-xl border bg-white overflow-hidden">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b p-3.5">
+          <div>
+            <h2 className="text-[13px] font-bold tracking-wide">Reports and history</h2>
+            <p className="text-[11px] text-stone-500 mt-0.5">{periodReports.length} reports • {selectedPeriod?.name || 'No period'}</p>
+          </div>
+          <button onClick={() => void sendNotices()} disabled={sending || !isFinalized || !periodReports.length || !isDean} className="w-full sm:w-auto h-10 rounded-lg bg-emerald-700 px-4 text-[13px] font-semibold text-white disabled:opacity-40 flex items-center justify-center gap-1.5"><Send size={14}/>{sending ? 'Sending...' : 'Send to parents'}</button>
         </div>
 
-        <div className="overflow-x-auto">
-          <table className="w-full min-w-[600px] text-left text-sm">
-            <thead className="bg-stone-50 text-[11px] uppercase text-stone-500"><tr><th className="px-3 py-2">Student</th><th className="px-3 py-2">Class</th><th className="px-3 py-2">Average</th><th className="px-3 py-2">Link</th><th className="px-3 py-2">Generated</th></tr></thead>
+        {/* DESKTOP TABLE */}
+        <div className="hidden md:block overflow-x-auto">
+          <table className="w-full text-left text-[13px]">
+            <thead className="bg-stone-50 text-[10px] uppercase tracking-widest text-stone-500"><tr><th className="px-3 py-2.5 font-semibold">Student</th><th className="px-3 py-2.5 font-semibold">Class</th><th className="px-3 py-2.5 font-semibold">Average</th><th className="px-3 py-2.5 font-semibold">Link</th><th className="px-3 py-2.5 font-semibold">Generated</th></tr></thead>
             <tbody className="divide-y">
               {pagedReports.map((r) => (
-                <tr key={r.id} className="hover:bg-stone-50"><td className="px-3 py-2 font-medium">{r.student_name}</td><td className="px-3 py-2">{r.class_name}</td><td className="px-3 py-2 font-bold">{Number(r.average).toFixed(1)}%</td><td className="px-3 py-2">{issuedTokens[r.id] ? <span className="inline-flex items-center gap-1 text-[11px] text-emerald-700"><Link2 size={12} />Ready</span> : <span className="text-[11px] text-stone-400">{isFinalized ? 'Pending' : 'Draft'}</span>}</td><td className="px-3 py-2 text-xs text-stone-500">{new Date(r.generated_at).toLocaleDateString()}</td></tr>
+                <tr key={r.id} className="hover:bg-stone-50/70"><td className="px-3 py-2.5 font-medium">{r.student_name}</td><td className="px-3 py-2.5 text-stone-600">{r.class_name}</td><td className="px-3 py-2.5 font-bold font-mono">{Number(r.average).toFixed(1)}%</td><td className="px-3 py-2.5">{issuedTokens[r.id] ? <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full"><Link2 size={12} />Ready</span> : <span className="text-[11px] text-stone-400">{isFinalized ? 'Pending' : 'Draft'}</span>}</td><td className="px-3 py-2.5 text-xs text-stone-500">{new Date(r.generated_at).toLocaleDateString()}</td></tr>
               ))}
-              {!pagedReports.length && <tr><td colSpan={5} className="py-10 text-center text-stone-500">No reports for this period</td></tr>}
+              {!pagedReports.length && <tr><td colSpan={5} className="py-12 text-center text-stone-500">No reports for this period</td></tr>}
             </tbody>
           </table>
         </div>
 
-        <div className="flex items-center justify-between border-t p-2.5 text-xs">
-          <span className="text-stone-500">Page {reportsPage}/{reportsTotalPages}</span>
-          <div className="flex gap-1">
-            <button disabled={reportsPage <= 1} onClick={() => setReportsPage((p) => p - 1)} className="rounded border px-2 py-1 disabled:opacity-40"><ChevronLeft size={14} /></button>
-            <button disabled={reportsPage >= reportsTotalPages} onClick={() => setReportsPage((p) => p + 1)} className="rounded border px-3 py-1 font-medium disabled:opacity-40">Next <ChevronRight size={12} className="inline" /></button>
+        {/* MOBILE CARDS  */}
+        <div className="md:hidden divide-y divide-stone-100">
+          {pagedReports.map((r) => (
+            <div key={r.id} className="p-3.5 bg-white">
+              <div className="flex justify-between items-start gap-2">
+                <div className="min-w-0">
+                  <p className="font-semibold text-[13px] leading-tight text-stone-900 truncate">{r.student_name}</p>
+                  <p className="text-[11px] text-stone-500 mt-1">{r.class_name} • {new Date(r.generated_at).toLocaleDateString()}</p>
+                </div>
+                <span className="shrink-0 text-[12px] font-mono font-bold bg-stone-900 text-white px-2.5 py-1 rounded-full">{Number(r.average).toFixed(1)}%</span>
+              </div>
+              <div className="mt-2.5 flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <span className="text-[10px] uppercase tracking-widest font-semibold text-stone-400">Link</span>
+                  {issuedTokens[r.id] ? <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2.5 py-1 rounded-full"><Link2 size={12} />Ready</span> : <span className="text-[11px] px-2.5 py-1 rounded-full bg-stone-100 text-stone-500">{isFinalized ? 'Pending' : 'Draft'}</span>}
+                </div>
+                <span className="text-[10px] text-stone-400">{r.average >= 50 ? 'Pass' : 'Review'}</span>
+              </div>
+            </div>
+          ))}
+          {!pagedReports.length && (
+            <div className="py-10 text-center px-4">
+              <FileText size={20} className="mx-auto text-stone-300 mb-2"/>
+              <p className="text-[13px] font-medium text-stone-600">No reports for this period</p>
+              <p className="text-[11px] text-stone-400 mt-1">Generate reports after entering all marks</p>
+            </div>
+          )}
+        </div>
+
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-t bg-stone-50/50 p-3 text-[11px]">
+          <span className="text-stone-500">Page {reportsPage} / {reportsTotalPages} • {periodReports.length} total</span>
+          <div className="flex gap-2 w-full sm:w-auto">
+            <button disabled={reportsPage <= 1} onClick={() => setReportsPage((p) => p - 1)} className="flex-1 sm:flex-none h-10 rounded-lg border bg-white px-4 font-medium disabled:opacity-40 flex items-center justify-center gap-1"><ChevronLeft size={14}/> Prev</button>
+            <button disabled={reportsPage >= reportsTotalPages} onClick={() => setReportsPage((p) => p + 1)} className="flex-1 sm:flex-none h-10 rounded-lg border bg-white px-4 font-medium disabled:opacity-40 flex items-center justify-center gap-1">Next <ChevronRight size={14}/></button>
           </div>
         </div>
       </div>
