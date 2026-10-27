@@ -154,6 +154,8 @@ export default function Students() {
   const [classFilter, setClassFilter] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
   const [activeSubMenu, setActiveSubMenu] = useState<"all" | "class" | "fee" | "archive">("all");
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 15;
   const [modalStudent, setModalStudent] = useState<Student | null>(null);
   const [isAddMode, setIsAddMode] = useState(false);
   const [showImportModal, setShowImportModal] = useState(false);
@@ -232,6 +234,16 @@ export default function Students() {
       return matchesSearch && matchesClass && matchesStatus;
     });
   }, [students, archivedStudents, search, classFilter, statusFilter, activeSubMenu]);
+
+    const totalPages = Math.ceil(filteredStudents.length / itemsPerPage);
+  const paginatedStudents = useMemo(() => {
+    const start = (currentPage - 1) * itemsPerPage;
+    return filteredStudents.slice(start, start + itemsPerPage);
+  }, [filteredStudents, currentPage]);
+
+  // Reset to page 1 when search changes
+  useEffect(() => { setCurrentPage(1); }, [search, classFilter, statusFilter, activeSubMenu]);
+
 
   function notify(message: string) {
     setToast(message);
@@ -439,10 +451,10 @@ export default function Students() {
   }
 
   return (
-    <div className="subnav-content-layout">
-      <aside className="subnav-sidebar">
-        <div className="subnav-sidebar-header">Student list</div>
-        <div className="subnav-links-list">
+    <div className="subnav-content-layout flex flex-col lg:flex-row gap-4">
+      <aside className="subnav-sidebar w-full lg:w-64 flex-shrink-0">
+        <div className="subnav-sidebar-header hidden lg:block">Student list</div>
+        <div className="subnav-links-list flex lg:flex-col overflow-x-auto no-scrollbar gap-1 pb-2 lg:pb-0">
           <button type="button" onClick={() => { setActiveSubMenu("all"); setClassFilter(""); setStatusFilter(""); }} className={`subnav-link-btn ${activeSubMenu === "all" ? "active" : ""}`}>
             <ArrowRight size={14} className="mr-2 text-[#ea580c]" /> Find a student
           </button>
@@ -463,45 +475,46 @@ export default function Students() {
       </aside>
 
       <main className="data-workspace">
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 pb-3 border-b border-slate-200 mb-4">
+        <div className="flex flex-col gap-3 pb-3 border-b border-slate-200 mb-4">
           <div>
             <h2 className="text-sm font-bold text-slate-900 uppercase tracking-wide">{activeSubMenu === "archive" ? "Archived Students" : "Student list"}</h2>
-            <p className="text-[11px] text-slate-500 mt-0.5">{activeSubMenu === "archive" ? "Deleted students saved in archive subfolder. You can restore or permanently delete." : "Update student details, classes, fees, and family contacts."}</p>
+            <p className="text-[11px] text-slate-500 mt-0.5">{activeSubMenu === "archive" ? "Deleted students saved in archive." : "Update student details, classes, fees, and family contacts."}</p>
           </div>
-          <div className="flex items-center gap-2">
-            <button type="button" onClick={exportToExcel} className="btn-enterprise-excel"><FileSpreadsheet size={14} /> Export {activeSubMenu === "archive" ? "archive" : "list"}</button>
-            {activeSubMenu !== "archive" && <button type="button" onClick={openAddModal} className="btn-enterprise-register"><Plus size={14} /> Add student</button>}
+          <div className="grid grid-cols-2 gap-2 sm:flex sm:items-center">
+            <button type="button" onClick={exportToExcel} className="btn-enterprise-excel justify-center py-2.5"><FileSpreadsheet size={14} /> Export</button>
+            {activeSubMenu !== "archive" && <button type="button" onClick={openAddModal} className="btn-enterprise-register justify-center py-2.5"><Plus size={14} /> Add student</button>}
           </div>
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 bg-slate-50 p-3 rounded border border-slate-200 mb-4">
-          <div className="relative"><Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" /><input type="text" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search code, student, parent..." className="form-input w-full pl-8" /></div>
-          <div><select value={classFilter} onChange={(e) => setClassFilter(e.target.value)} className="form-select w-full"><option value="">-- All Class Streams --</option>{availableClasses.map((c) => (<option key={c} value={c}>{c}</option>))}</select></div>
-          <div><select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className="form-select w-full"><option value="">-- All Fee Statuses --</option><option value="Paid">Fully Paid</option><option value="Partial">Partial Payment</option><option value="Unpaid">Unpaid</option></select></div>
+        <div className="grid grid-cols-1 gap-2 sm:grid-cols-3 sm:gap-3 bg-slate-50 p-2.5 sm:p-3 rounded-lg border border-slate-200 mb-4">
+          <div className="relative"><Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" /><input type="text" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search code, student, parent..." className="form-input w-full pl-9 py-2.5 text-sm" /></div>
+          <select value={classFilter} onChange={(e) => setClassFilter(e.target.value)} className="form-select w-full py-2.5 text-sm"><option value="">-- All Class Streams --</option>{availableClasses.map((c) => (<option key={c} value={c}>{c}</option>))}</select>
+          <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className="form-select w-full py-2.5 text-sm"><option value="">-- All Fee Statuses --</option><option value="Paid">Fully Paid</option><option value="Partial">Partial Payment</option><option value="Unpaid">Unpaid</option></select>
         </div>
 
-        <div className="system-table-wrap">
+      {/* DESKTOP TABLE */}
+        <div className="hidden md:block system-table-wrap">
           <table className="system-table">
             <thead>
               <tr>
-                <th style={{ width: '110px' }}>Reg Code</th>
+                <th>Reg Code</th>
                 <th>Student Full Name</th>
                 <th>Class / Stream</th>
                 <th>Parent / Guardian</th>
                 <th>Contact Phone</th>
-                <th style={{ width: '130px' }}>{activeSubMenu === "archive" ? "Archived" : "Fee Status"}</th>
+                <th>{activeSubMenu === "archive" ? "Archived" : "Fee Status"}</th>
                 <th style={{ width: '90px', textAlign: 'center' }}>Actions</th>
               </tr>
             </thead>
             <tbody>
-              {filteredStudents.length > 0 ? (
-                filteredStudents.map((student, index) => (
+              {paginatedStudents.length > 0 ? (
+                paginatedStudents.map((student, index) => (
                   <tr 
                     key={`${student.id}-${student.registryCode}-${index}`} 
                     className="cursor-pointer" 
                     onClick={() => activeSubMenu !== "archive" && openEdit(student as Student)}
                   >
-                    <td className="font-mono text-emerald-800 font-semibold">{student.registryCode ?? student.id}</td>
+                    <td className="table-sticky-left font-mono text-emerald-800 font-semibold text-xs">{student.registryCode ?? student.id}</td>
                     <td><span className="font-semibold text-slate-900 block">{student.fullName}</span><span className="text-[11px] text-slate-500">{student.stream ?? 'General'}</span>{activeSubMenu === "archive" && <span className="text-[10px] text-amber-600 block">{(student as ArchivedStudent).archivedReason}</span>}</td>
                     <td><span className="font-medium">{student.studentClass}</span></td>
                     <td>{student.parentName}</td>
@@ -512,14 +525,14 @@ export default function Students() {
                         <span className="text-[10px] text-slate-500 block mt-0.5 font-mono">{student.feeAmount}</span>
                       </>}
                     </td>
-                    <td>
+                    <td className="table-sticky-right">
                       <div className="flex items-center justify-center gap-1" onClick={(e) => e.stopPropagation()}>
                         {activeSubMenu === "archive" ? <>
-                          <button type="button" onClick={() => handleRestore(student as ArchivedStudent)} className="p-1 text-emerald-600 hover:text-emerald-700 rounded" title="Restore"><RotateCcw size={13} /></button>
-                          <button type="button" onClick={() => handlePermanentDelete(student as ArchivedStudent)} className="p-1 text-slate-400 hover:text-red-600 rounded" title="Permanent delete"><Trash size={13} /></button>
+                          <button type="button" onClick={() => handleRestore(student as ArchivedStudent)} className="p-2 text-emerald-600 hover:text-emerald-700 rounded" title="Restore"><RotateCcw size={14} /></button>
+                          <button type="button" onClick={() => handlePermanentDelete(student as ArchivedStudent)} className="p-2 text-slate-400 hover:text-red-600 rounded" title="Permanent delete"><Trash size={14} /></button>
                         </> : <>
-                          <button type="button" onClick={() => openEdit(student as Student)} className="p-1 text-slate-500 hover:text-emerald-700 rounded" title="Edit student"><Pencil size={13} /></button>
-                          <button type="button" onClick={() => confirmArchive(student as Student)} className="p-1 text-slate-400 hover:text-amber-600 rounded" title="Archive student"><Archive size={13} /></button>
+                          <button type="button" onClick={() => openEdit(student as Student)} className="p-2 text-slate-500 hover:text-emerald-700 rounded" title="Edit student"><Pencil size={14} /></button>
+                          <button type="button" onClick={() => confirmArchive(student as Student)} className="p-2 text-slate-400 hover:text-amber-600 rounded" title="Archive student"><Archive size={14} /></button>
                         </>}
                       </div>
                     </td>
@@ -531,18 +544,102 @@ export default function Students() {
             </tbody>
           </table>
         </div>
+               <div className="md:hidden space-y-3">
+        {paginatedStudents.map((student, index) => (
+            <div key={`${student.id}-${index}`} className="bg-white border border-slate-200 rounded-[14px] shadow-[0_2px_8px_rgba(15,23,42,0.04)] overflow-hidden">
+              {/* Header */}
+              <div className="px-4 pt-3.5 pb-3 flex items-start justify-between gap-3">
+                <div className="flex gap-3 min-w-0">
+                  <div className="w-9 h-9 rounded-full bg-slate-900 text-white flex items-center justify-center text-[11px] font-bold tracking-wide shrink-0">
+                    {student.fullName.split(' ').map(n=>n[0]).slice(0,2).join('')}
+                  </div>
+                  <div className="min-w-0">
+                    <p className="font-semibold text-[13.5px] leading-[1.3] text-slate-900 tracking-[-0.01em] truncate">{student.fullName}</p>
+                    <p className="text-[11px] leading-4 font-mono font-medium text-slate-500 mt-0.5 tracking-wide">{student.registryCode} • {student.studentClass}</p>
+                    {activeSubMenu === "archive" && (student as ArchivedStudent).archivedReason && (
+                      <p className="text-[10px] text-amber-700 bg-amber-50 border border-amber-200 rounded px-1.5 py-0.5 mt-1.5 inline-block">{(student as ArchivedStudent).archivedReason}</p>
+                    )}
+                  </div>
+                </div>
+              </div>
 
-        <div className="flex items-center justify-between text-xs text-slate-500 mt-3 pt-2 border-t border-slate-100">
-          <span>Total Records: <strong className="font-mono font-bold text-slate-800">{filteredStudents.length}</strong> {studentsLoading && <span className="text-[10px] text-slate-400 font-mono">(Syncing...)</span>}</span>
-          <span className="text-[11px]">{activeSubMenu === "archive" ? "Archive (Student's registry subfolder)" : "Click any record to inspect or modify student details"}</span>
+              {/* Details - clean 2 col */}
+              <div className="px-4 pb-3 grid grid-cols-2 gap-x-4 gap-y-2.5 border-t border-slate-100 pt-3">
+                <div className="min-w-0">
+                  <p className="text-[10px] font-semibold tracking-widest uppercase text-slate-400">Parent / Guardian</p>
+                  <p className="text-[12.5px] font-medium text-slate-800 leading-tight mt-1 truncate">{student.parentName}</p>
+                </div>
+                <div className="min-w-0">
+                  <p className="text-[10px] font-semibold tracking-widest uppercase text-slate-400">Contact</p>
+                  <p className="text-[12px] font-mono font-medium text-slate-800 leading-tight mt-1">{student.phone}</p>
+                </div>
+                <div>
+                  <p className="text-[10px] font-semibold tracking-widest uppercase text-slate-400">Tuition</p>
+                  <p className="text-[12px] font-mono text-slate-700 mt-1">{student.feeAmount}</p>
+                </div>
+                <div>
+                  <p className="text-[10px] font-semibold tracking-widest uppercase text-slate-400">{activeSubMenu === "archive" ? "Archived On" : "Stream"}</p>
+                  <p className="text-[12px] text-slate-700 mt-1 truncate">{activeSubMenu === "archive" ? (student as ArchivedStudent).archivedAt.split(',')[0] : (student.stream || 'General')}</p>
+                </div>
+              </div>
+
+              {/* Actions - clear boundaries */}
+              <div className="grid grid-cols-2 divide-x divide-slate-200 border-t border-slate-200 bg-slate-50/60">
+                {activeSubMenu === "archive" ? (
+                  <>
+                    <button onClick={() => handleRestore(student as ArchivedStudent)} className="h-11 text-[12px] font-semibold tracking-wide text-emerald-700 hover:bg-emerald-50 flex items-center justify-center gap-1.5">
+                      <RotateCcw size={14}/> Restore
+                    </button>
+                    <button onClick={() => handlePermanentDelete(student as ArchivedStudent)} className="h-11 text-[12px] font-semibold tracking-wide text-red-600 hover:bg-red-50 flex items-center justify-center gap-1.5">
+                      <Trash size={14}/> Delete Forever
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <button onClick={() => openEdit(student as Student)} className="h-11 text-[12px] font-semibold tracking-wide text-slate-700 hover:bg-white flex items-center justify-center gap-1.5">
+                      <Pencil size={14}/> Edit
+                    </button>
+                    <button onClick={() => confirmArchive(student as Student)} className="h-11 text-[12px] font-semibold tracking-wide text-amber-700 hover:bg-amber-50 flex items-center justify-center gap-1.5">
+                      <Archive size={14}/> Archive
+                    </button>
+                  </>
+                )}
+              </div>
+            </div>
+          ))}
+          {paginatedStudents.length === 0 && (
+            <div className="bg-white border border-dashed border-slate-300 rounded-[14px] p-8 text-center">
+              <Users size={20} className="mx-auto text-slate-400 mb-2"/><p className="text-[13px] font-medium text-slate-600">{activeSubMenu === "archive" ? "Archive is empty" : "No students found"}</p>
+            </div>
+          )}
         </div>
+
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs text-slate-500 mt-4 pt-3 border-t border-slate-200">
+          <span className="text-[11px]">Showing {(currentPage-1)*itemsPerPage+1}-{Math.min(currentPage*itemsPerPage, filteredStudents.length)} of <strong className="font-mono text-slate-800">{filteredStudents.length}</strong></span>
+          
+          {totalPages > 1 && (
+            <div className="flex items-center gap-1">
+              <button disabled={currentPage===1} onClick={() => setCurrentPage(p=>p-1)} className="px-3 py-2 border rounded bg-white disabled:opacity-40 text-xs font-medium">Prev</button>
+              <div className="flex items-center gap-1 mx-1">
+                {Array.from({length: Math.min(5, totalPages)}, (_, i) => {
+                  let pageNum = totalPages <=5 ? i+1 : currentPage <=3 ? i+1 : currentPage >= totalPages-2 ? totalPages-4+i : currentPage-2+i;
+                  return (
+                    <button key={pageNum} onClick={() => setCurrentPage(pageNum)} className={`w-8 h-8 rounded text-xs font-bold ${currentPage===pageNum ? 'bg-[#ea580c] text-white' : 'bg-white border text-slate-600'}`}>{pageNum}</button>
+                  );
+                })}
+              </div>
+              <button disabled={currentPage===totalPages} onClick={() => setCurrentPage(p=>p+1)} className="px-3 py-2 border rounded bg-white disabled:opacity-40 text-xs font-medium">Next</button>
+            </div>
+          )}
+        </div>
+
       </main>
 
       <input ref={csvInputRef} type="file" accept=".csv,text/csv" className="hidden" onChange={handleCsvFileChange} />
 
       {(isAddMode || modalStudent) && (
-        <div className="modal-overlay" onClick={closeModal}>
-          <div className="modal-dialog-box" onClick={(e) => e.stopPropagation()}>
+        <div className="modal-overlay p-0 sm:p-4 bg-white sm:bg-black/50" onClick={closeModal}>
+          <div className="modal-dialog-box w-full h-[100dvh] sm:h-auto rounded-none sm:rounded-xl max-w-lg sm:max-w-2xl flex flex-col" onClick={(e) => e.stopPropagation()}>
             <div className="modal-header-bar"><h2>{isAddMode ? "Register new student" : "Edit student record"}</h2><button type="button" onClick={closeModal} className="modal-close-btn"><X size={16} /></button></div>
             <div className="modal-section-marker">Student Information</div>
             <div className="modal-form-grid">
@@ -574,7 +671,7 @@ export default function Students() {
             <div className="modal-header-bar"><h2>Archive Student</h2><button type="button" onClick={() => setStudentToArchive(null)} className="modal-close-btn"><X size={16} /></button></div>
             <div className="p-4 space-y-3">
               <p className="text-sm text-slate-700">You are about to move <strong>{studentToArchive.fullName}</strong> ({studentToArchive.registryCode}) to the archive folder.</p>
-              <p className="text-[11px] text-slate-500">The record will be saved in <code className="bg-slate-100 px-1 rounded">school_students_archive</code> and removed from active list. You can restore it later.</p>
+              <p className="text-[11px] text-slate-500">The record will be saved in <code className="bg-slate-100 px-1 rounded">Archive</code> and removed from active list. You can restore it later.</p>
               <div className="form-row"><label className="form-label">Reason for archiving (optional)</label><input type="text" value={archiveReason} onChange={(e) => setArchiveReason(e.target.value)} placeholder="e.g. Level completed, Transferred, Duplicate record" className="form-input" /></div>
             </div>
             <div className="modal-footer-bar"><button type="button" onClick={() => setStudentToArchive(null)} className="btn-enterprise-cancel">Cancel</button><button type="button" onClick={handleArchive} className="bg-amber-600 hover:bg-amber-700 text-white px-4 py-2 rounded text-xs font-bold flex items-center gap-2"><Archive size={14} /> Move to Archive</button></div>

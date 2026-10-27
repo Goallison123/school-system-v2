@@ -79,8 +79,8 @@ export default function HeadmasterOverview({
           <h2 className="font-semibold text-stone-900">School at a glance</h2>
           <p className="mt-1 text-sm text-stone-500">Current totals from your school records.</p>
         </div>
-        <div className="system-table-wrap rounded-none border-0">
-          <table className="system-table">
+        <div className="system-table-wrap rounded-none border-0 -mx-5 sm:mx-0">
+          <table className="system-table min-w-[520px]">
             <thead><tr><th>What you can check</th><th>Total</th><th>Next step</th></tr></thead>
             <tbody>
               {metrics.map((metric) => {
@@ -108,7 +108,7 @@ export default function HeadmasterOverview({
         </div>
       </section>
 
-      <section className="rounded-xl border border-stone-200 bg-white p-5 shadow-sm">
+      <section className="rounded-xl border border-stone-200 bg-white p-4 sm:p-5 shadow-sm">
         <h2 className="font-semibold text-stone-900">Quick links</h2>
         <div className="mt-3 divide-y divide-stone-100">
           {quickActions.map((action) => (
@@ -116,9 +116,9 @@ export default function HeadmasterOverview({
               key={action.destination}
               type="button"
               onClick={() => onNavigate(action.destination)}
-              className="flex w-full items-center justify-between py-3 text-left text-sm font-medium text-stone-700 hover:text-[#c2410c]"
+              className="flex w-full items-center justify-between py-3.5 sm:py-3 text-left text-sm font-medium text-stone-700 hover:text-[#c2410c] active:bg-orange-50 -mx-2 px-2 rounded-lg transition"
             >
-              {action.label}<ArrowRight size={15} />
+              {action.label}<ArrowRight size={16} className="flex-shrink-0" />
             </button>
           ))}
         </div>
@@ -140,15 +140,15 @@ export default function HeadmasterOverview({
             </button>
           </div>
           {recentCampaigns.length ? (
-            <div className="system-table-wrap rounded-none border-0">
-              <table className="system-table">
+            <div className="system-table-wrap rounded-none border-0 -mx-5 sm:mx-0">
+              <table className="system-table min-w-[600px]">
                 <thead><tr><th>Notice</th><th>Category</th><th>Recipients</th><th>Status</th></tr></thead>
                 <tbody>
                   {recentCampaigns.map((campaign) => (
                     <tr key={campaign.id}>
                       <td>
-                        <strong className="block text-stone-900">{campaign.title}</strong>
-                        <span className="block max-w-md truncate text-xs text-stone-500">{campaign.message}</span>
+                        <strong className="block text-stone-900 text-sm">{campaign.title}</strong>
+                        <span className="block max-w-[200px] sm:max-w-md truncate text-xs text-stone-500">{campaign.message}</span>
                       </td>
                       <td>{campaign.category}</td>
                       <td>{campaign.recipient_count.toLocaleString()}</td>

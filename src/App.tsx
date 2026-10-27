@@ -18,6 +18,7 @@ import {
   UserCog,
   X,
   LockKeyhole,
+  Menu,
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import type { View, Contact, Campaign, Content, Inquiry, WorkspaceSettings } from '@/types';
@@ -143,8 +144,13 @@ function App() {
   const [showContentForm, setShowContentForm] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [showHelp, setShowHelp] = useState(false);
-  const [showNotifications, setShowNotifications] = useState(false);
+    const [showNotifications, setShowNotifications] = useState(false);
   const [toast, setToast] = useState('');
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+
+  useEffect(() => {
+    setMobileMenuOpen(false);
+  }, [location.pathname]);
 
   useEffect(() => {
     async function loadData() {
@@ -368,38 +374,44 @@ function App() {
   return (
     <div className={`system-shell ${MAINTENANCE_MODE ? 'pt-[40px]' : ''}`}>
       <MaintenanceBanner />
-      <div className="top-utility-strip">
-        <div className="user-welcome">Welcome, <strong>{user?.full_name || user?.email}</strong> ({SCHOOL_NAME})</div>
+            <div className="top-utility-strip">
+        <div className="user-welcome">
+          <span>Welcome, <strong>{user?.full_name || user?.email}</strong></span>
+          <span className="hidden sm:inline"> ({SCHOOL_NAME})</span>
+        </div>
         <div className="utility-actions">
-          {isDean && <button onClick={() => exportContacts('xls')} className="util-badge-btn util-badge-purple"><Download size={12} /> Export</button>}
-          {(role === 'headteacher' || isDean) && <button onClick={() => setShowNotification(true)} className="util-badge-btn util-badge-green"><Megaphone size={12} /> New broadcast</button>}
-          <button onClick={() => setShowNotifications((s) => !s)} className="util-badge-btn util-badge-amber"><Bell size={12} /> History</button>
-          {isDean && <button onClick={() => setShowSettings(true)} className="util-badge-btn util-badge-slate"><Settings size={12} /> Settings</button>}
-          <div className="flex items-center gap-1.5 text-xs">
-            <span className="w-6 h-6 rounded-full bg-[#ffedd5] grid place-items-center font-bold">{(user?.full_name || 'A')[0]}</span>
-            <span>{roleName}</span>
+          {isDean && <button onClick={() => exportContacts('xls')} className="util-badge-btn util-badge-purple"><Download size={12} /> <span className="hidden sm:inline">Export</span></button>}
+          {(role === 'headteacher' || isDean) && <button onClick={() => setShowNotification(true)} className="util-badge-btn util-badge-green"><Megaphone size={12} /> <span className="hidden sm:inline">Broadcast</span></button>}
+          <button onClick={() => setShowNotifications((s) => !s)} className="util-badge-btn util-badge-amber"><Bell size={12} /> <span className="hidden sm:inline">History</span></button>
+          {isDean && <button onClick={() => setShowSettings(true)} className="util-badge-btn util-badge-slate"><Settings size={12} /> <span className="hidden sm:inline">Settings</span></button>}
+          <div className="flex items-center gap-1.5 text-xs pl-1">
+            <span className="w-6 h-6 rounded-full bg-[#ffedd5] text-[#78350f] grid place-items-center font-bold text-[11px]">{(user?.full_name || 'A')[0]}</span>
+            <span className="hidden md:inline font-medium">{roleName}</span>
           </div>
-          <button onClick={handleLogout} className="text-slate-500 hover:text-red-700 ml-2 p-1"><LogOut size={15} /></button>
+          <button onClick={handleLogout} className="text-slate-500 hover:text-red-700 ml-1 p-1"><LogOut size={14} /></button>
         </div>
       </div>
 
-      <header className="institution-brand-bar">
+            <header className="institution-brand-bar">
         <div className="brand-emblem-lockup">
           <img className="brand-crest" src="/assets/school-community.jpg" alt="" />
           <div className="brand-titles"><h1>{SCHOOL_NAME}</h1><p>EXCELLENCE · SYSTEMATIZED</p></div>
         </div>
-        <div className="brand-right-tools">
+        <div className="brand-right-tools flex items-center gap-2">
             {ENABLE_CONTENT_PAGES && allowedPaths.includes('/inquiries') && (
             <button onClick={() => navigate('/inquiries')} className="message-counter-badge">
               <span>{inquiries.filter((i) => i.status === 'New').length}</span><Inbox size={14} />
             </button>
           )}
+          <button type="button" onClick={() => setMobileMenuOpen((prev) => !prev)} className="mobile-nav-toggle-btn border border-stone-200">
+            {mobileMenuOpen ? <X size={20} /> : <Menu size={20} />}
+          </button>
         </div>
       </header>
 
-      <nav className="system-nav-bar">
+      <nav className={`system-nav-bar ${mobileMenuOpen ? 'mobile-open' : ''}`}>
         {visibleNavItems.map(({ id, label, icon: Icon, path }) => (
-          <NavLink key={id} to={path} className={({ isActive }) => `system-nav-tab ${isActive ? 'active' : ''}`}>
+          <NavLink key={id} to={path} className={({ isActive }) => `system-nav-tab ${isActive ? 'active' : ''}`} onClick={() => setMobileMenuOpen(false)}>
             <Icon size={15} /><span>{label}</span>
             {id === 'inquiries' && inquiries.filter((i) => i.status === 'New').length > 0 && <span className="nav-tab-counter">{inquiries.filter((i) => i.status === 'New').length}</span>}
           </NavLink>
