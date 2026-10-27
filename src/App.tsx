@@ -40,6 +40,12 @@ import TeacherOverview from '@/pages/TeacherOverview';
 import ReportNotFound from '@/pages/ReportNotFound';
 import MaintenanceBanner, { MAINTENANCE_MODE } from './layout/MaintenanceBanner';
 
+
+// false = hides News + Gallery + Inquiries
+
+const ENABLE_CONTENT_PAGES = false; 
+
+
 const MidTermEngine = React.lazy(() => import('@/pages/MidTermEngine'));
 
 function mapStudentToParentContact(row: Record<string, unknown>): Contact {
@@ -153,9 +159,9 @@ function App() {
         const [studentsResult, campaignsResult, galleryResult, newsResult, inquiriesResult, settingsResult] = await Promise.all([
           deanRole || headRole ? supabase.from('school_students').select('id, parent_name, full_name, class_name, phone, email, fee_amount, created_at').order('created_at', { ascending: false }).limit(5000) : { data: [] },
           deanRole || headRole ? supabase.from('notification_campaigns').select('*').order('created_at', { ascending: false }).limit(100) : { data: [] },
-          deanRole ? supabase.from('gallery_items').select('*').order('updated_at', { ascending: false }).limit(50) : { data: [] },
-          deanRole ? supabase.from('news_items').select('*').order('published_at', { ascending: false }).limit(50) : { data: [] },
-          deanRole ? supabase.from('school_inquiries').select('*').order('created_at', { ascending: false }).limit(50) : { data: [] },
+          ENABLE_CONTENT_PAGES && deanRole ? supabase.from('gallery_items').select('*').order('updated_at', { ascending: false }).limit(50) : { data: [] },
+          ENABLE_CONTENT_PAGES&& deanRole ? supabase.from('news_items').select('*').order('published_at', { ascending: false }).limit(50) : { data: [] },
+          ENABLE_CONTENT_PAGES && deanRole ? supabase.from('school_inquiries').select('*').order('created_at', { ascending: false }).limit(50) : { data: [] },
           deanRole ? supabase.from('workspace_settings').select('*').limit(1) : { data: [] },
         ]);
         if (deanRole || headRole) setContacts((studentsResult?.data ?? []).map((r) => mapStudentToParentContact(r as any)));
@@ -284,27 +290,33 @@ function App() {
     notify(`Exported ${format.toUpperCase()}`);
   }
 
-  const navItems = [
+      const navItems = [
     { id: 'overview', label: 'Overview', icon: LayoutDashboard, path: '/overview' },
     { id: 'students', label: 'Students', icon: GraduationCap, path: '/students' },
     { id: 'midterm', label: 'Mid-term', icon: ClipboardList, path: '/midterm' },
     { id: 'users', label: 'Staff', icon: UserCog, path: '/users' },
     { id: 'campaigns', label: 'Broadcasts', icon: Megaphone, path: '/campaigns' },
     { id: 'contacts', label: 'Contacts', icon: Users, path: '/contacts' },
-    { id: 'content', label: 'News', icon: GalleryHorizontal, path: '/content' },
-    { id: 'inquiries', label: 'Inquiries', icon: Inbox, path: '/inquiries' },
+    ...(ENABLE_CONTENT_PAGES ? [{ id: 'content', label: 'News', icon: GalleryHorizontal, path: '/content' } as const] : []),
+    ...(ENABLE_CONTENT_PAGES ? [{ id: 'inquiries', label: 'Inquiries', icon: Inbox, path: '/inquiries' } as const] : []),
   ] as const;
 
   const role = parseSchoolRole(user?.role);
   const isDean = ['dean_of_studies', 'it'].includes(role);
 
   // UPDATED: Dean can now access Staff page for class assignments
-  const allowedPaths = 
+      const rawAllowedPaths = 
     role === 'teacher' ? ['/overview', '/midterm', '/students'] 
     : role === 'headteacher' ? ['/overview', '/midterm', '/campaigns'] 
     : role === 'dean_of_studies' ? ['/overview', '/students', '/midterm', '/users', '/campaigns', '/contacts', '/content', '/inquiries'] 
-    : role === 'it' ? navItems.map((i) => i.path) 
+    : role === 'it' ? ['/overview', '/students', '/midterm', '/users', '/campaigns', '/contacts', '/content', '/inquiries'] 
     : [];
+
+  const allowedPaths = rawAllowedPaths.filter(p => {
+    if (!ENABLE_CONTENT_PAGES && p === '/content') return false;
+    if (!ENABLE_CONTENT_PAGES && p === '/inquiries') return false;
+    return true;
+  });
 
   const visibleNavItems = navItems.filter((i) => allowedPaths.includes(i.path));
   const homePath = allowedPaths.includes('/overview') ? '/overview' : '/midterm';
@@ -377,7 +389,7 @@ function App() {
           <div className="brand-titles"><h1>{SCHOOL_NAME}</h1><p>EXCELLENCE · SYSTEMATIZED</p></div>
         </div>
         <div className="brand-right-tools">
-          {allowedPaths.includes('/inquiries') && (
+            {ENABLE_CONTENT_PAGES && allowedPaths.includes('/inquiries') && (
             <button onClick={() => navigate('/inquiries')} className="message-counter-badge">
               <span>{inquiries.filter((i) => i.status === 'New').length}</span><Inbox size={14} />
             </button>
