@@ -96,6 +96,11 @@ CREATE TABLE IF NOT EXISTS public.workspace_settings (
   CONSTRAINT workspace_settings_pkey PRIMARY KEY (id)
 );
 
+-- Seed singleton settings record if missing
+INSERT INTO public.workspace_settings (id, admin_name, default_notification_channel)
+VALUES ('00000000-0000-0000-0000-000000000001', 'GS Gacuba 2A Administration', 'SMS')
+ON CONFLICT (id) DO NOTHING;
+
 -- 5. Student Information System (SIS) ---------------------------------------
 CREATE TABLE IF NOT EXISTS public.school_students (
   id uuid NOT NULL DEFAULT gen_random_uuid(),
@@ -318,18 +323,25 @@ GRANT SELECT, INSERT, DELETE ON public.teacher_class_assignments TO authenticate
 GRANT SELECT ON public.teacher_student_register TO authenticated;
 
 -- Users policies
+DROP POLICY IF EXISTS users_select_staff ON public.users;
 CREATE POLICY users_select_staff ON public.users FOR SELECT TO authenticated USING (true);
+
+DROP POLICY IF EXISTS users_update_it ON public.users;
 CREATE POLICY users_update_it ON public.users FOR UPDATE TO authenticated
   USING (id = (SELECT auth.uid()) OR public.current_school_role() = 'it')
   WITH CHECK (id = (SELECT auth.uid()) OR public.current_school_role() = 'it');
 
 -- Workspace Settings policies
+DROP POLICY IF EXISTS workspace_settings_select ON public.workspace_settings;
 CREATE POLICY workspace_settings_select ON public.workspace_settings FOR SELECT TO authenticated USING (true);
+
+DROP POLICY IF EXISTS workspace_settings_modify ON public.workspace_settings;
 CREATE POLICY workspace_settings_modify ON public.workspace_settings FOR ALL TO authenticated
   USING (public.current_school_role() IN ('dean_of_studies', 'headteacher', 'it'))
   WITH CHECK (public.current_school_role() IN ('dean_of_studies', 'headteacher', 'it'));
 
 -- Students policies
+DROP POLICY IF EXISTS students_read_authorized ON public.school_students;
 CREATE POLICY students_read_authorized ON public.school_students FOR SELECT TO authenticated
   USING (
     public.current_school_role() IN ('dean_of_studies', 'headteacher', 'it')
@@ -343,22 +355,26 @@ CREATE POLICY students_read_authorized ON public.school_students FOR SELECT TO a
     )
   );
 
+DROP POLICY IF EXISTS students_write_dean_or_it ON public.school_students;
 CREATE POLICY students_write_dean_or_it ON public.school_students FOR ALL TO authenticated
   USING (public.current_school_role() IN ('dean_of_studies', 'it'))
   WITH CHECK (public.current_school_role() IN ('dean_of_studies', 'it'));
 
 -- Students archive policies
+DROP POLICY IF EXISTS archive_manage_dean_or_it ON public.school_students_archive;
 CREATE POLICY archive_manage_dean_or_it ON public.school_students_archive FOR ALL TO authenticated
   USING (public.current_school_role() IN ('dean_of_studies', 'it'))
   WITH CHECK (public.current_school_role() IN ('dean_of_studies', 'it'));
 
 -- Teacher class assignments policies
+DROP POLICY IF EXISTS assignments_read_authorized ON public.teacher_class_assignments;
 CREATE POLICY assignments_read_authorized ON public.teacher_class_assignments FOR SELECT TO authenticated
   USING (
     teacher_user_id = (SELECT auth.uid())
     OR public.current_school_role() IN ('dean_of_studies', 'headteacher', 'it')
   );
 
+DROP POLICY IF EXISTS assignments_manage_dean_or_it ON public.teacher_class_assignments;
 CREATE POLICY assignments_manage_dean_or_it ON public.teacher_class_assignments FOR ALL TO authenticated
   USING (public.current_school_role() IN ('dean_of_studies', 'it'))
   WITH CHECK (public.current_school_role() IN ('dean_of_studies', 'it'));
