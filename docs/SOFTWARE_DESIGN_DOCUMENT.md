@@ -64,7 +64,7 @@ All business security constraints, permission scopes, and data integrity rules a
 ## 2. Frontend Component & Routing Architecture
 
 ### 2.1 Routing & Role-Aware Navigation
-The single-page application router is managed in `src/App.tsx`. Authenticated routing evaluates the user's canonical role obtained from `public.users` on login:
+The single-page application router is managed in `frontend/src/App.tsx`. Authenticated routing evaluates the user's canonical role obtained from `public.users` on login:
 
 ```
                           [ Client Session Check ]
@@ -92,7 +92,7 @@ The single-page application router is managed in `src/App.tsx`. Authenticated ro
 ### 2.2 Component Hierarchy & Responsibilities
 
 ```
-src/
+frontend/src/
 ├── App.tsx                          # App shell, navigation sidebar, topbar, route guards
 ├── main.tsx                         # Entry point rendering BrowserRouter and App
 ├── index.css                        # Tailwind directives, custom scrollbars, DM Sans/Inter typography
@@ -133,7 +133,7 @@ src/
 
 ## 3. Relational Data Models & Database Schemas
 
-The database schema is defined across migrations in `supabase/migrations/`. Below is the complete entity-relationship specification.
+The database schema is defined across migrations in `backend/supabase/migrations/`. Below is the complete entity-relationship specification.
 
 ### 3.1 Entity Relationship Diagram (ERD)
 
@@ -398,7 +398,7 @@ $$;
 
 ## 6. Realtime Synchronization & Event Subscriptions
 
-In `src/App.tsx`, parent contact lists are maintained in real-time using Supabase Realtime Channels. When the Dean or an administrator edits or imports student records, connected client instances immediately reflect the updated guardian contact directory without page reloads:
+In `frontend/src/App.tsx`, parent contact lists are maintained in real-time using Supabase Realtime Channels. When the Dean or an administrator edits or imports student records, connected client instances immediately reflect the updated guardian contact directory without page reloads:
 
 ```typescript
 const channel = client

@@ -209,7 +209,7 @@ Adopt the **Transactional Outbox Pattern**:
 Teachers and administrative staff frequently export student rosters from disparate tools (Excel, Google Sheets, legacy databases) resulting in inconsistent delimiters (commas, semicolons, tabs) and differing header names (e.g., "Parent Name" vs. "Guardian" vs. "Contact Person").
 
 #### Decision
-Build a custom, zero-dependency streaming CSV parser in `src/utils/studentCsv.ts`:
+Build a custom, zero-dependency streaming CSV parser in `frontend/src/utils/studentCsv.ts`:
 1. Delimiter Sniffer: Analyzes candidate delimiters outside quoted strings and selects the dominant character.
 2. Header Synonym Normalization: Strips non-alphanumeric characters and maps variations against an alias registry.
 3. Interactive Validation Staging Grid: Parses rows into staged objects, highlights syntax/validation errors inline, and prevents duplicate insertions before database commit.
@@ -232,7 +232,7 @@ Build a custom, zero-dependency streaming CSV parser in `src/utils/studentCsv.ts
 In low-connectivity periods, network disruptions in Rubavu District, or local evaluation environments without configured Supabase environment variables, a standard BaaS app will throw fatal initialization errors and present a blank screen.
 
 #### Decision
-Implement a hybrid query engine in `src/lib/supabase.ts`. When `VITE_SUPABASE_URL` is unconfigured or network requests fail, the client activates an in-memory/localStorage query builder with pre-seeded school test data. The user interface functions seamlessly, preserving data locally and displaying graceful status alerts.
+Implement a hybrid query engine in `frontend/src/lib/supabase.ts`. When `VITE_SUPABASE_URL` is unconfigured or network requests fail, the client activates an in-memory/localStorage query builder with pre-seeded school test data. The user interface functions seamlessly, preserving data locally and displaying graceful status alerts.
 
 #### Consequences
 - **Positive:**
@@ -325,5 +325,4 @@ Additionally, unpruned PDF report storage would quickly exceed the 1 GB object s
   - Crystal-clear operational and contractual boundaries.
 - **Negative:**
   - The school must continue using external ledgers or specialized software for daily attendance and employee payroll.
-
 

@@ -113,13 +113,13 @@ Review existing migrations before preparing corrective migrations.
 
 Known migration:
 
-- `supabase/migrations/20260812072940_create_school_admin_workspace.sql`
+- `backend/supabase/migrations/20260812072940_create_school_admin_workspace.sql`
 
 This migration defines workspace tables and grants broad access to anonymous and authenticated users. Verify the deployed policies and plan a safe replacement for sensitive data.
 
 Known migration:
 
-- `supabase/migrations/20261020120000_add_teacher_assignment_directory.sql`
+- `backend/supabase/migrations/20261020120000_add_teacher_assignment_directory.sql`
 
 This migration defines teacher-directory functions and permits both the dean of studies and IT to access teacher directory information. Directory access must be distinguished from mark-editing authority.
 
@@ -208,4 +208,3 @@ Use that inventory to reconcile the live database with the repository before cre
 ### 11.5 Hosting Upgrades & Maintenance Responsibility
 - Supabase storage cannot be expanded independently without upgrading the entire hosting plan subscription.
 - The school administration is formally responsible for upgrading the hosting and database plans if institutional growth (e.g., student population exceeding 1,000, multi-year unpruned archives, or non-standard storage use) demands capacity exceeding baseline service plan allocations.
-

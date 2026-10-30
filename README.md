@@ -125,7 +125,7 @@ A data volume audit confirms the platform will operate smoothly for an entire ac
 
 ### 4.1 Role-Based Portals & Access Control (RBAC)
 
-The system enforces four distinct, strictly partitioned staff roles (as defined in `src/types.ts`, `src/App.tsx`, and PostgreSQL enum `public.school_role`):
+The system enforces four distinct, strictly partitioned staff roles (as defined in `frontend/src/types.ts`, `frontend/src/App.tsx`, and PostgreSQL enum `public.school_role`):
 
 - **Headteacher (`headteacher`):** Strategic executive visibility, institutional KPI dashboards, cross-stream academic standing, school fee collection metrics, and read-only academic audit.
 - **Dean of Studies (`dean_of_studies`):** Academic operations: student enrollment and registration, roster CSV/Excel bulk import, curriculum subject configuration, teacher-to-class stream assignments, examination period creation and finalization, mark compilation, and report link distribution.
@@ -258,9 +258,9 @@ public.midterm_reports (
    ```
 
 3. **Configure environment variables:**
-   Copy `.env.example` to `.env`:
+   Copy `frontend/.env.example` to `frontend/.env`:
    ```bash
-   cp .env.example .env
+   cp frontend/.env.example frontend/.env
    ```
    Populate the following variables (or leave empty to use offline mock mode):
    ```env
@@ -288,8 +288,8 @@ public.midterm_reports (
    ```
    Apply migrations and deploy the email proxy:
    ```bash
-   supabase db push
-   supabase functions deploy send-email
+   supabase --workdir backend/supabase db push
+   supabase --workdir backend/supabase functions deploy send-email
    ```
 
 4. **Launch development server:**
@@ -328,7 +328,7 @@ npm run preview
 
 ## 9. Edge Functions & Microservices
 
-The application contains production Deno serverless edge functions located in `/supabase/functions`:
+The application contains production Deno serverless edge functions located in `/backend/supabase/functions`:
 
 | Function Name | Runtime | Role & Purpose |
 |---|---|---|
@@ -350,6 +350,8 @@ supabase functions deploy send-sms
 ---
 
 ## 10. Repository Structure
+
+The frontend and backend are intentionally separated. Root npm commands remain available as compatibility wrappers; frontend-only commands can also be run from `frontend/`, and Supabase CLI commands use `backend/supabase/` as their working directory.
 
 ```
 ├── docs/                                  # Technical specifications & design docs
