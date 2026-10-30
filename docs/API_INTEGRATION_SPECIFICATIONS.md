@@ -280,7 +280,7 @@ Content-Type: application/json
 
 ## 5. Serverless Deno Edge Functions (v2.1.0)
 
-All edge functions reside in `/supabase/functions` and execute in the Deno runtime with CORS and bearer authentication.
+All edge functions reside in `/backend/supabase/functions` and execute in the Deno runtime with CORS and bearer authentication.
 
 ### 5.1 `POST /functions/v1/issue-midterm-links`
 Generates cryptographically random, URL-safe access tokens for student reports in an academic period.
@@ -436,4 +436,3 @@ Scheduled or on-demand notification agent dispatching internal reminders to teac
 - **Supported Rwandan Carrier Networks:** MTN Rwanda (`63510`), Airtel Rwanda (`63513`)
 - **Number Normalization:** All destination addresses must conform to E.164 format: `+2507[2|3|8|9]XXXXXXX`.
 - **Sender ID:** `SYBELLA` (Configured through Rwanda Utilities Regulatory Authority - RURA registration by Africa's talking).
-

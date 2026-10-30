@@ -36,7 +36,7 @@ npm install
 ### Step 3: Configure Environment Variables
 Create your local `.env` configuration file from the template:
 ```bash
-cp .env.example .env
+cp frontend/.env.example frontend/.env
 ```
 
 Edit `.env` with your Supabase project credentials:
@@ -74,14 +74,14 @@ npm run build
 
 ### 3.1 TypeScript & Type Safety
 - **Strict Mode:** Strict type checking is enforced in `tsconfig.app.json`.
-- **Zero `any` Policy:** Explicitly define all function signatures, component props, and API response types. Avoid `any`; use `unknown` with type guards or create explicit interfaces in `src/types.ts`.
+- **Zero `any` Policy:** Explicitly define all function signatures, component props, and API response types. Avoid `any`; use `unknown` with type guards or create explicit interfaces in `frontend/src/types.ts`.
 - **Readonly Immortality:** Avoid direct mutation of state objects or arrays. Use immutable spreading or functional updates.
 
 ### 3.2 React Architecture & Hooks
 - **Functional Components:** All UI components must be written as functional React components with standard hooks (`useState`, `useEffect`, `useMemo`, `useCallback`, `useRef`).
 - **Heavy Calculation Memoization:** Calculations involving array reductions, filtering thousands of student records, or computing grade distributions must be wrapped in `useMemo`.
 - **Event Handler Stability:** Handlers passed down to complex child tables should be wrapped in `useCallback` to prevent unnecessary re-render cycles.
-- **Component Modularity:** Large views must be split into logical sub-components. Pure business logic (such as grading thresholds, CSV parsing, or phone validation) must live in `src/utils/` as pure, testable functions decoupled from React.
+- **Component Modularity:** Large views must be split into logical sub-components. Pure business logic (such as grading thresholds, CSV parsing, or phone validation) must live in `frontend/src/utils/` as pure, testable functions decoupled from React.
 
 ### 3.3 Tailwind CSS & Styling Guidelines
 - **Zero Inline Styles:** Never use `style={{ ... }}` for layout or colors. Use utility classes from Tailwind CSS.
@@ -135,9 +135,9 @@ Before opening or merging a Pull Request into `main`:
 ## 5. Database Migration & Deployment Runbook
 
 ### 5.1 Authoring Supabase Migrations
-Database schema updates must be written as discrete, sequential SQL migration files under `supabase/migrations/`:
+Database schema updates must be written as discrete, sequential SQL migration files under `backend/supabase/migrations/`:
 ```text
-supabase/migrations/<YYYYMMDDHHMMSS>_<descriptive_name>.sql
+backend/supabase/migrations/<YYYYMMDDHHMMSS>_<descriptive_name>.sql
 ```
 
 Rules for safe migrations:
