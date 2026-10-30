@@ -80,7 +80,7 @@ interface Props {
   onClose: () => void;
   onSave: (
     campaign: Omit<Campaign, 'id' | 'created_at'>,
-    dispatch: { fingerprint: string; recipientIds: string[] },
+    dispatch: { fingerprint: string; recipientIds: string[]; emailDispatchKey?: string },
   ) => void;
   contacts: Contact[];
   allowReports?: boolean;
@@ -219,6 +219,7 @@ export default function NotificationModal({ onClose, onSave, contacts, allowRepo
               recipients: [{ email: contact.email, name: contact.parent_name }],
               subject: title.trim(),
               message: personalized,
+              dispatchKey: fingerprint,
             });
             delivery.push({ id: contact.id, name: contact.parent_name, channel: 'EMAIL', status: 'Delivered' });
           } catch {
@@ -229,6 +230,10 @@ export default function NotificationModal({ onClose, onSave, contacts, allowRepo
 
       const delivered = delivery.filter((d) => d.status === 'Delivered').length;
       const failed = delivery.filter((d) => d.status === 'Failed').length;
+      const smsDelivered = delivery.filter((d) => d.channel === 'SMS' && d.status === 'Delivered').length;
+      const smsFailed = delivery.filter((d) => d.channel === 'SMS' && d.status === 'Failed').length;
+      const emailDelivered = delivery.filter((d) => d.channel === 'EMAIL' && d.status === 'Delivered').length;
+      const emailFailed = delivery.filter((d) => d.channel === 'EMAIL' && d.status === 'Failed').length;
 
       if (delivered === 0) {
         setError('Messages were not delivered. Please check recipients and try again.');
@@ -243,6 +248,16 @@ export default function NotificationModal({ onClose, onSave, contacts, allowRepo
         previewMessage: message.trim().slice(0, 100),
         recipientCount: delivered,
         recipientDetails: `Delivered: ${delivered}, Failed: ${failed}`,
+        smsStatus: useSMS
+          ? smsFailed > 0
+            ? `Sent (${smsDelivered}), Failed (${smsFailed})`
+            : `Sent (${smsDelivered})`
+          : undefined,
+        emailStatus: useEmail
+          ? emailFailed > 0
+            ? `Delivered (${emailDelivered}), Failed (${emailFailed})`
+            : 'Delivered'
+          : undefined,
       });
 
       setResult(delivery);
@@ -259,6 +274,7 @@ export default function NotificationModal({ onClose, onSave, contacts, allowRepo
         {
           fingerprint,
           recipientIds: [...new Set(delivery.filter((d) => d.status === 'Delivered').map((d) => d.id))],
+          emailDispatchKey: useEmail ? fingerprint : undefined,
         },
       );
     } catch {

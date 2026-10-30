@@ -1,7 +1,8 @@
 /**
- * Free Email Service (TBD Provider Architecture)
- * Supports multiple free options: Resend Free, EmailJS Free, Brevo Free, Free Webhook / Google Apps Script, and Free Sandbox Simulator
+ * Email delivery service. Resend is proxied through Supabase so its API key
+ * never reaches the browser.
  */
+import { supabase } from '@/lib/supabase';
 
 export type FreeEmailProvider = 'simulation' | 'resend' | 'emailjs' | 'brevo' | 'webhook';
 
@@ -15,6 +16,7 @@ export interface EmailConfig {
   provider: FreeEmailProvider;
   fromName: string;
   fromEmail: string;
+  /** Backwards-compatible field; provider credentials are server-side only. */
   apiKey: string;
   webhookUrl: string;
   emailjsServiceId: string;
@@ -43,7 +45,7 @@ export const DEFAULT_EMAIL_CONFIG: EmailConfig = {
   provider: (import.meta.env.VITE_EMAIL_PROVIDER as FreeEmailProvider) || 'simulation',
   fromName: import.meta.env.VITE_EMAIL_FROM_NAME || 'G.S Gacuba 2A Administration',
   fromEmail: import.meta.env.VITE_EMAIL_FROM_EMAIL || 'admin@gsgacuba2a.rw',
-  apiKey: import.meta.env.VITE_EMAIL_API_KEY || '',
+  apiKey: '',
   webhookUrl: '',
   emailjsServiceId: '',
   emailjsTemplateId: '',
@@ -55,7 +57,7 @@ export function getEmailConfig(): EmailConfig {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (raw) {
-      return { ...DEFAULT_EMAIL_CONFIG, ...JSON.parse(raw) };
+      return { ...DEFAULT_EMAIL_CONFIG, ...JSON.parse(raw), apiKey: '' };
     }
   } catch (err) {
     console.warn('Failed to parse email config', err);
@@ -65,7 +67,7 @@ export function getEmailConfig(): EmailConfig {
 
 export function saveEmailConfig(config: EmailConfig): void {
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(config));
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({ ...config, apiKey: '' }));
   } catch (err) {
     console.error('Failed to save email config', err);
   }
@@ -133,6 +135,7 @@ export async function sendBulkEmail(options: {
   message: string;
   actionUrl?: string;
   actionLabel?: string;
+  dispatchKey?: string;
   configOverride?: Partial<EmailConfig>;
 }): Promise<EmailDispatchResult> {
   const config = { ...getEmailConfig(), ...(options.configOverride || {}) };
@@ -143,7 +146,30 @@ export async function sendBulkEmail(options: {
     throw new Error('No valid recipient email addresses found');
   }
 
-  // 1. Resend Free API (100 emails/day free)
+  // 1. Resend Free API. The Edge Function owns RESEND_API_KEY and persists
+  // one delivery record per recipient.
+  if (config.provider === 'resend') {
+    if (!supabase) throw new Error('Supabase client not initialized');
+    const { data, error } = await supabase.functions.invoke<EmailDispatchResult>('send-email', {
+      body: {
+        recipients: validRecipients.map((r) => ({ email: r.email, name: r.name || 'Parent' })),
+        subject: options.subject.trim(),
+        message: options.message.trim(),
+        dispatch_key: options.dispatchKey,
+        html: buildSchoolEmailHtml({
+          title: options.subject,
+          recipientName: validRecipients[0]?.name || 'Parent',
+          message: options.message,
+          actionUrl: options.actionUrl,
+          actionLabel: options.actionLabel,
+        }),
+      },
+    });
+    if (error) throw new Error(error.message);
+    if (!data) throw new Error('Empty response from email provider');
+    return { ...data, provider: 'resend', deliveryReceipts: data.deliveryReceipts ?? [] };
+  }
+  /*
   if (config.provider === 'resend' && config.apiKey) {
     try {
       const receipts = [];
@@ -202,6 +228,8 @@ export async function sendBulkEmail(options: {
       console.warn('Resend execution error, falling back to simulated receipt', err);
     }
   }
+
+  */
 
   // 2. Custom Webhook / Cloudflare Worker / Google Apps Script
   if (config.provider === 'webhook' && config.webhookUrl) {

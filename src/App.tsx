@@ -314,12 +314,9 @@ function App() {
     );
   }
 
-  async function saveCampaign(
-    campaign: Omit<Campaign, "id" | "created_at">,
-    dispatch: { fingerprint: string; recipientIds: string[] },
-  ) {
-    if (!supabase) return notify("Service unavailable");
-    if (!(isDean || role === "headteacher")) return notify("Unauthorized");
+  async function saveCampaign(campaign: Omit<Campaign, 'id' | 'created_at'>, dispatch: { fingerprint: string; recipientIds: string[]; emailDispatchKey?: string }) {
+    if (!supabase) return notify('Service unavailable');
+    if (!(isDean || role === 'headteacher')) return notify('Unauthorized');
     try {
       const { data: existing } = await supabase
         .from("sms_campaign_dispatches")
@@ -362,11 +359,16 @@ function App() {
             .eq("id", ledger.id);
         return notify("Failed to save broadcast");
       }
-      if (ledger)
-        await supabase
-          .from("sms_campaign_dispatches")
-          .update({ campaign_id: data.id })
-          .eq("id", ledger.id);
+      if (ledger) await supabase.from('sms_campaign_dispatches').update({ campaign_id: data.id }).eq('id', ledger.id);
+      if (dispatch.emailDispatchKey) {
+        const { error: emailLinkError } = await supabase.rpc('link_email_dispatches_to_campaign', {
+          p_dispatch_key: dispatch.emailDispatchKey,
+          p_campaign_id: data.id,
+        });
+        if (emailLinkError) {
+          console.error('Email campaign link failed:', emailLinkError.message);
+        }
+      }
       setCampaigns((prev) => [data as Campaign, ...prev]);
       setShowNotification(false);
       notify(
