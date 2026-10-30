@@ -274,10 +274,22 @@ public.midterm_reports (
    VITE_AFRICASTALKING_SENDER_ID="sandbox"
    VITE_AFRICASTALKING_ENV="sandbox"
 
-   # School Email Configuration
-   VITE_EMAIL_PROVIDER="simulation"
+   # School Email Configuration (Resend is called by Supabase, not the browser)
+   VITE_EMAIL_PROVIDER="resend"
    VITE_EMAIL_FROM_NAME="G.S Gacuba 2A Administration"
    VITE_EMAIL_FROM_EMAIL="admin@gsgacuba2a.rw"
+   ```
+
+   Configure the following Supabase Edge Function secrets before using live email:
+   ```bash
+   supabase secrets set RESEND_API_KEY="re_..."
+   supabase secrets set RESEND_FROM_EMAIL="admin@gacuba2a.co.rw"
+   supabase secrets set RESEND_FROM_NAME="G.S Gacuba 2A Administration"
+   ```
+   Apply migrations and deploy the email proxy:
+   ```bash
+   supabase db push
+   supabase functions deploy send-email
    ```
 
 4. **Launch development server:**
@@ -324,6 +336,7 @@ The application contains production Deno serverless edge functions located in `/
 | `download-midterm-report` | Deno / TypeScript | Validates parent access tokens, queries snapshot report JSON, and streams dynamic PDF binary directly to the browser. |
 | `finalize-midterm` | Deno / TypeScript | Atomic transaction orchestrator: transitions period state to `finalized`, computes class rankings, and locks marks against tampering. |
 | `send-sms` | Deno / TypeScript | Secure proxy isolating Africa's Talking API secrets from client bundles; formats Rwanda numbers and routes via outbound REST. |
+| `send-email` | Deno / TypeScript | Authenticated Resend proxy; stores one provider result per recipient in `email_dispatches`. |
 | `deliver-midterm-parent-notifications` | Deno / TypeScript | High-throughput batch worker dispatching SMS and email links to parent rosters upon academic period release. |
 | `send-midterm-reminders` | Deno / TypeScript | Scheduled worker alerting teachers and administrators regarding missing subject mark entries prior to deadlines. |
 
@@ -402,4 +415,3 @@ supabase functions deploy send-sms
 - **Institution:** Groupe Scolaire Gacuba 2A, Rubavu District, Western Province, Rwanda.
 - **Development & Architecture:** Sybella Systems Ltd.
 - **Version:** 2.1.0 (Released October 2026)
-
